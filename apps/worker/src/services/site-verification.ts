@@ -4,6 +4,7 @@ import { nowIso } from "../utils/time";
 import { normalizeBaseUrl } from "../utils/url";
 import { selectTokenForModel } from "./channel-attemptability";
 import { updateCallTokenModels } from "./channel-call-token-repo";
+import { stageNewlyDiscoveredModels } from "./channel-effective-models";
 import { extractModelIds, modelsToJson } from "./channel-models";
 import { parseChannelMetadata, resolveProvider } from "./channel-metadata";
 import { collectVerifiedTokenModelUpdates } from "./site-verification-token-models";
@@ -853,10 +854,18 @@ export async function persistSiteVerificationResult(options: {
 	result: SiteVerificationResult;
 }): Promise<void> {
 	const { db, channel, result } = options;
-	const metadataJson = withVerificationSummary(
+	const summaryMetadataJson = withVerificationSummary(
 		channel.metadata_json,
 		buildSummarySnapshot(result),
 	);
+	const metadataJson =
+		result.discovered_models.length > 0
+			? stageNewlyDiscoveredModels(
+					summaryMetadataJson,
+					extractModelIds(channel),
+					result.discovered_models,
+				)
+			: summaryMetadataJson;
 	const updatedAt = nowIso();
 	await db
 		.prepare(

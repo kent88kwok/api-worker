@@ -12,6 +12,10 @@
 /tests/*
 !tests/scripts/
 !tests/scripts/**
+!tests/worker/
+!tests/worker/**
+!tests/ui/
+!tests/ui/**
 playwright-report
 test-results
 .dev

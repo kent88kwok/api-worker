@@ -1,5 +1,8 @@
 import { selectTokenForModel } from "./channel-attemptability";
-import { extractModelIds } from "./channel-models";
+import {
+	parseManualModelConfig,
+	resolveEffectiveModelIds,
+} from "./channel-effective-models";
 import type { ChannelRow } from "./channel-types";
 import type { ChannelTokenTestItem } from "./channel-testing";
 
@@ -51,7 +54,7 @@ export function mergeVerificationTokenModels(
 }
 
 export function collectCandidateModels(options: {
-	channel: Pick<ChannelRow, "models_json">;
+	channel: Pick<ChannelRow, "models_json" | "metadata_json">;
 	tokens: VerificationTokenSelectionInput[];
 	discoveredModels: string[];
 	mappedDefaultModel: string | null;
@@ -60,29 +63,25 @@ export function collectCandidateModels(options: {
 }): VerificationModelSelection {
 	const random = options.random ?? Math.random;
 	const rawCandidates: Array<{ model: string; source: string }> = [];
-	if (options.lastVerifiedModel) {
-		rawCandidates.push({
-			model: options.lastVerifiedModel,
-			source: "last_verified_model",
-		});
-	}
-	if (options.mappedDefaultModel) {
-		rawCandidates.push({
-			model: options.mappedDefaultModel,
-			source: "model_mapping_default",
-		});
-	}
-	for (const model of options.discoveredModels) {
+	const excludedModels = new Set(
+		parseManualModelConfig(options.channel.metadata_json).exclude,
+	);
+	const appendCandidate = (model: string | null, source: string) => {
+		if (!model || excludedModels.has(model)) {
+			return;
+		}
 		rawCandidates.push({
 			model,
-			source: "discovered_models",
+			source,
 		});
-	}
-	for (const model of extractModelIds(options.channel)) {
-		rawCandidates.push({
-			model,
-			source: "configured_models",
-		});
+	};
+	appendCandidate(options.lastVerifiedModel, "last_verified_model");
+	appendCandidate(options.mappedDefaultModel, "model_mapping_default");
+	for (const model of resolveEffectiveModelIds({
+		channel: options.channel,
+		verifiedModels: options.discoveredModels,
+	})) {
+		appendCandidate(model, "effective_models");
 	}
 	const seenModels = new Set<string>();
 	const candidates = rawCandidates.filter((candidate) => {

@@ -37,7 +37,8 @@ import {
 	testChannelTokens,
 	type ChannelTokenTestItem,
 } from "./channel-testing";
-import { modelsToJson } from "./channel-models";
+import { extractModelIds, modelsToJson } from "./channel-models";
+import { stageNewlyDiscoveredModels } from "./channel-effective-models";
 import { parseChannelMetadata, resolveProvider } from "./channel-metadata";
 import { upsertChannelModelCapabilities } from "./channel-model-capabilities";
 
@@ -765,9 +766,16 @@ async function refreshChannelModels(
 		};
 	}
 	const updatedAt = nowIso();
+	const metadataJson = stageNewlyDiscoveredModels(
+		channel.metadata_json,
+		extractModelIds(channel),
+		result.models,
+	);
 	await db
-		.prepare("UPDATE channels SET models_json = ?, updated_at = ? WHERE id = ?")
-		.bind(modelsToJson(result.models), updatedAt, channel.id)
+		.prepare(
+			"UPDATE channels SET models_json = ?, metadata_json = ?, updated_at = ? WHERE id = ?",
+		)
+		.bind(modelsToJson(result.models), metadataJson, updatedAt, channel.id)
 		.run();
 	for (const item of result.items) {
 		if (!item.tokenId) {

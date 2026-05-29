@@ -54,6 +54,21 @@ export function modelsToJson(models: string[]): string {
 	return JSON.stringify(normalized.map((id) => ({ id })));
 }
 
+export function removeModelFromModelsJson(
+	modelsJson: string | null | undefined,
+	model: string,
+): string {
+	const normalizedModel = String(model ?? "").trim();
+	if (!normalizedModel) {
+		return modelsJson ?? "[]";
+	}
+	return modelsToJson(
+		extractModelIds({ models_json: modelsJson }).filter(
+			(item) => item !== normalizedModel,
+		),
+	);
+}
+
 export function extractModelIds(
 	channel: Pick<ChannelRow, "models_json">,
 ): string[] {

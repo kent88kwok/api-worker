@@ -40,6 +40,9 @@ import {
 	type SiteSortState,
 } from "../core/sites";
 import type {
+	ModelChannel,
+	ModelItem,
+	ModelStatusUpdate,
 	Site,
 	SiteCoolingModel,
 	SiteChannelRefreshItem,
@@ -55,8 +58,14 @@ import {
 	loadColumnPrefs,
 	persistColumnPrefs,
 } from "../core/utils";
+import {
+	getChannelModelRows,
+	getPagedChannelModelRows,
+	type ChannelModelStatusFilter,
+} from "./channel-models";
 
 type ChannelsViewProps = {
+	models: ModelItem[];
 	sites: Site[];
 	siteForm: SiteForm;
 	sitePage: number;
@@ -91,6 +100,11 @@ type ChannelsViewProps = {
 	onDisableFailedSite: (site: SiteVerificationResult) => void;
 	onDisableAllFailedSites: () => void;
 	onClearCoolingModel: (siteId: string, model: string) => void;
+	onSetModelStatus: (
+		channelId: string,
+		model: string,
+		status: ModelStatusUpdate,
+	) => void;
 };
 
 const pageSizeOptions = [10, 20, 50];
@@ -106,6 +120,18 @@ const siteStatusOptions = [
 	{ value: "active", label: getSiteStatusLabel("active") },
 	{ value: "disabled", label: getSiteStatusLabel("disabled") },
 ];
+const modelStatusOptions = [
+	{ value: "enabled", label: "正式" },
+	{ value: "pending", label: "待加入" },
+	{ value: "excluded", label: "排除" },
+];
+const modelFilterOptions = [
+	{ value: "all", label: "全部" },
+	{ value: "enabled", label: "正式" },
+	{ value: "pending", label: "待加入" },
+	{ value: "excluded", label: "已排除" },
+];
+const channelModelPageSize = 8;
 const sortableColumns: Array<{ key: SiteSortKey; label: string }> = [
 	{ key: "name", label: "站点" },
 	{ key: "type", label: "类型" },
@@ -396,6 +422,7 @@ type CallTokenOverlayVisual = {
 };
 
 export const ChannelsView = ({
+	models,
 	sites,
 	siteForm,
 	sitePage,
@@ -430,6 +457,7 @@ export const ChannelsView = ({
 	onDisableFailedSite,
 	onDisableAllFailedSites,
 	onClearCoolingModel,
+	onSetModelStatus,
 }: ChannelsViewProps) => {
 	const isEditing = Boolean(editingSite);
 	const pageItems = buildPageItems(sitePage, siteTotalPages);
@@ -465,6 +493,13 @@ export const ChannelsView = ({
 	const [cooldownDetailSite, setCooldownDetailSite] = useState<Site | null>(
 		null,
 	);
+	const [draftModelName, setDraftModelName] = useState("");
+	const [draftModelStatus, setDraftModelStatus] =
+		useState<ModelChannel["status"]>("pending");
+	const [modelSearch, setModelSearch] = useState("");
+	const [modelStatusFilter, setModelStatusFilter] =
+		useState<ChannelModelStatusFilter>("all");
+	const [modelPage, setModelPage] = useState(1);
 	const needsSystemToken = supportsSystemCredentials(siteForm.site_type);
 	const canScheduleCheckin = supportsSiteCheckin(siteForm.site_type);
 	const checkinTask = taskReports.checkin;
@@ -979,6 +1014,12 @@ export const ChannelsView = ({
 	useEffect(() => {
 		setLocalSearch(siteSearch);
 	}, [siteSearch]);
+
+	useEffect(() => {
+		setModelSearch("");
+		setModelStatusFilter("all");
+		setModelPage(1);
+	}, [editingSite?.id]);
 	useEffect(() => {
 		const timer = window.setTimeout(() => {
 			if (localSearch !== siteSearch) {
@@ -1339,6 +1380,270 @@ export const ChannelsView = ({
 					(token, index) =>
 						getCallTokenDragKey(token, index) === activeCallTokenDrag.tokenKey,
 				) ?? null);
+	const activeModelSite = editingSite ?? null;
+	const modelRows = getChannelModelRows(models, activeModelSite?.id);
+	const modelRowsByStatus = {
+		enabled: modelRows.filter((item) => item.status === "enabled"),
+		pending: modelRows.filter((item) => item.status === "pending"),
+		excluded: modelRows.filter((item) => item.status === "excluded"),
+	};
+	const modelPageResult = getPagedChannelModelRows(modelRows, {
+		page: modelPage,
+		pageSize: channelModelPageSize,
+		search: modelSearch,
+		status: modelStatusFilter,
+	});
+	const modelPageItems = buildPageItems(
+		modelPageResult.page,
+		modelPageResult.totalPages,
+	);
+	const hasChannelModelRows = modelRows.length > 0;
+	const getModelStatusVariant = (status: ModelChannel["status"]) => {
+		if (status === "enabled") {
+			return "success" as const;
+		}
+		if (status === "pending") {
+			return "warning" as const;
+		}
+		return "danger" as const;
+	};
+	const setChannelModelStatus = (model: string, status: ModelStatusUpdate) => {
+		if (!activeModelSite) {
+			return;
+		}
+		onSetModelStatus(activeModelSite.id, model, status);
+	};
+	const submitDraftModel = () => {
+		const model = draftModelName.trim();
+		if (!model || !activeModelSite) {
+			return;
+		}
+		onSetModelStatus(activeModelSite.id, model, draftModelStatus);
+		setDraftModelName("");
+		setModelSearch("");
+		setModelStatusFilter(draftModelStatus);
+		setModelPage(1);
+	};
+	const renderModelManagementCard = () => {
+		if (!activeModelSite) {
+			return null;
+		}
+		const draftModel = draftModelName.trim();
+		const draftActionPending = draftModel
+			? isActionPending(`model:${activeModelSite.id}:${draftModel}`)
+			: false;
+		const refreshPending = isActionPending(
+			`site:refresh:${activeModelSite.id}`,
+		);
+		return (
+			<Card class="p-4">
+				<div class="flex flex-wrap items-start justify-between gap-3">
+					<div class="min-w-0">
+						<p class="text-xs font-semibold uppercase tracking-widest text-[color:var(--app-ink-muted)]">
+							模型管理
+						</p>
+						<p class="mt-1 truncate text-xs text-[color:var(--app-ink-muted)]">
+							{activeModelSite.name}
+						</p>
+					</div>
+					<div class="flex flex-wrap items-center gap-1.5">
+						<Chip variant="success">
+							正式 {modelRowsByStatus.enabled.length}
+						</Chip>
+						<Chip variant="warning">
+							待加入 {modelRowsByStatus.pending.length}
+						</Chip>
+						<Chip variant="danger">
+							排除 {modelRowsByStatus.excluded.length}
+						</Chip>
+						<Button
+							class="h-8 px-3 text-[11px]"
+							size="sm"
+							type="button"
+							disabled={refreshPending || activeModelSite.status !== "active"}
+							title={
+								activeModelSite.status === "active"
+									? undefined
+									: "仅启用渠道可更新"
+							}
+							onClick={() => onRefreshSite(activeModelSite)}
+						>
+							{refreshPending ? "拉取中..." : "拉取模型"}
+						</Button>
+					</div>
+				</div>
+				<div class="mt-3 grid gap-2 md:grid-cols-[minmax(0,1fr)_132px_auto]">
+					<Input
+						placeholder="模型 ID"
+						value={draftModelName}
+						onInput={(event) =>
+							setDraftModelName((event.currentTarget as HTMLInputElement).value)
+						}
+						onKeyDown={(event) => {
+							if (event.key !== "Enter") {
+								return;
+							}
+							event.preventDefault();
+							submitDraftModel();
+						}}
+					/>
+					<SingleSelect
+						class="w-full"
+						value={draftModelStatus}
+						options={modelStatusOptions}
+						onChange={(next) =>
+							setDraftModelStatus(next as ModelChannel["status"])
+						}
+					/>
+					<Button
+						class="h-10 px-4 text-xs"
+						size="md"
+						variant="primary"
+						type="button"
+						disabled={!draftModel || draftActionPending}
+						onClick={submitDraftModel}
+					>
+						{draftActionPending ? "添加中..." : "添加"}
+					</Button>
+				</div>
+				<div class="mt-3 grid gap-2 md:grid-cols-[minmax(0,1fr)_132px]">
+					<Input
+						placeholder="搜索当前渠道模型"
+						value={modelSearch}
+						onInput={(event) => {
+							setModelSearch((event.currentTarget as HTMLInputElement).value);
+							setModelPage(1);
+						}}
+					/>
+					<SingleSelect
+						class="w-full"
+						value={modelStatusFilter}
+						options={modelFilterOptions}
+						onChange={(next) => {
+							setModelStatusFilter(next as ChannelModelStatusFilter);
+							setModelPage(1);
+						}}
+					/>
+				</div>
+				{hasChannelModelRows && (
+					<div class="mt-2 text-xs text-[color:var(--app-ink-muted)]">
+						显示 {modelPageResult.rows.length} / {modelPageResult.total}{" "}
+						个匹配模型
+					</div>
+				)}
+				{hasChannelModelRows ? (
+					<div class="mt-3 overflow-hidden rounded-lg border border-white/70 bg-white/70">
+						<div class="grid grid-cols-[minmax(0,1fr)_88px_minmax(220px,auto)] items-center gap-3 border-b border-white/70 px-3 py-2 text-[11px] font-semibold uppercase tracking-widest text-[color:var(--app-ink-muted)]">
+							<div>模型</div>
+							<div>状态</div>
+							<div class="text-right">操作</div>
+						</div>
+						{modelPageResult.rows.length === 0 ? (
+							<div class="px-3 py-6 text-center text-xs text-[color:var(--app-ink-muted)]">
+								暂无匹配模型
+							</div>
+						) : (
+							<div class="divide-y divide-white/70">
+								{modelPageResult.rows.map((row) =>
+									renderModelRow(row.model, row.status),
+								)}
+							</div>
+						)}
+						{modelPageResult.totalPages > 1 && (
+							<div class="flex flex-wrap items-center justify-between gap-2 border-t border-white/70 px-3 py-2 text-xs text-[color:var(--app-ink-muted)]">
+								<span>
+									第 {modelPageResult.page} / {modelPageResult.totalPages} 页
+								</span>
+								<Pagination
+									page={modelPageResult.page}
+									totalPages={modelPageResult.totalPages}
+									items={modelPageItems}
+									onPageChange={setModelPage}
+								/>
+							</div>
+						)}
+					</div>
+				) : (
+					<div class="mt-3 rounded-lg border border-dashed border-white/70 bg-white/60 px-3 py-4 text-center text-xs text-[color:var(--app-ink-muted)]">
+						暂无模型
+					</div>
+				)}
+			</Card>
+		);
+	};
+	const renderModelRow = (model: string, status: ModelChannel["status"]) => {
+		const actionPending = isActionPending(
+			`model:${activeModelSite?.id}:${model}`,
+		);
+		return (
+			<div
+				class="grid grid-cols-[minmax(0,1fr)_88px] gap-2 px-3 py-2 md:grid-cols-[minmax(0,1fr)_88px_minmax(220px,auto)] md:items-center md:gap-3"
+				key={`${status}:${model}`}
+			>
+				<div class="min-w-0">
+					<p class="truncate text-xs font-semibold text-[color:var(--app-ink)]">
+						{model}
+					</p>
+				</div>
+				<div>
+					<Chip variant={getModelStatusVariant(status)}>
+						{status === "enabled"
+							? "正式"
+							: status === "pending"
+								? "待加入"
+								: "已排除"}
+					</Chip>
+				</div>
+				<div class="col-span-2 flex flex-wrap justify-start gap-1.5 md:col-span-1 md:justify-end">
+					{status !== "enabled" && (
+						<Button
+							class="h-8 px-2 text-[11px]"
+							size="sm"
+							variant="primary"
+							type="button"
+							disabled={actionPending}
+							onClick={() => setChannelModelStatus(model, "enabled")}
+						>
+							加入正式
+						</Button>
+					)}
+					{status !== "pending" && (
+						<Button
+							class="h-8 px-2 text-[11px]"
+							size="sm"
+							type="button"
+							disabled={actionPending}
+							onClick={() => setChannelModelStatus(model, "pending")}
+						>
+							转待加入
+						</Button>
+					)}
+					{status !== "excluded" && (
+						<Button
+							class="h-8 px-2 text-[11px]"
+							size="sm"
+							variant="ghost"
+							type="button"
+							disabled={actionPending}
+							onClick={() => setChannelModelStatus(model, "excluded")}
+						>
+							排除
+						</Button>
+					)}
+					<Button
+						class="h-8 px-2 text-[11px]"
+						size="sm"
+						variant="ghost"
+						type="button"
+						disabled={actionPending}
+						onClick={() => setChannelModelStatus(model, "auto")}
+					>
+						删除
+					</Button>
+				</div>
+			</div>
+		);
+	};
 	const renderTaskReportDialog = () => {
 		if (!activeReportTask) {
 			return null;
@@ -2022,9 +2327,6 @@ export const ChannelsView = ({
 								const checkinPending = isActionPending(
 									`site:checkin:${site.id}`,
 								);
-								const refreshPending = isActionPending(
-									`site:refresh:${site.id}`,
-								);
 								const togglePending = isActionPending(`site:toggle:${site.id}`);
 								const deletePending = isActionPending(`site:delete:${site.id}`);
 								return (
@@ -2149,16 +2451,6 @@ export const ChannelsView = ({
 												class="h-9 w-full px-3 text-xs"
 												size="sm"
 												type="button"
-												disabled={refreshPending || !isActive}
-												title={!isActive ? "仅启用渠道可更新" : undefined}
-												onClick={() => onRefreshSite(site)}
-											>
-												{refreshPending ? "更新中..." : "更新渠道"}
-											</Button>
-											<Button
-												class="h-9 w-full px-3 text-xs"
-												size="sm"
-												type="button"
 												disabled={togglePending}
 												onClick={() => onToggle(site.id, site.status)}
 											>
@@ -2250,9 +2542,6 @@ export const ChannelsView = ({
 									);
 									const checkinPending = isActionPending(
 										`site:checkin:${site.id}`,
-									);
-									const refreshPending = isActionPending(
-										`site:refresh:${site.id}`,
 									);
 									const togglePending = isActionPending(
 										`site:toggle:${site.id}`,
@@ -2374,16 +2663,6 @@ export const ChannelsView = ({
 														class="h-9 px-3 text-xs"
 														size="sm"
 														type="button"
-														disabled={refreshPending || !isActive}
-														title={!isActive ? "仅启用渠道可更新" : undefined}
-														onClick={() => onRefreshSite(site)}
-													>
-														{refreshPending ? "更新中..." : "更新渠道"}
-													</Button>
-													<Button
-														class="h-9 px-3 text-xs"
-														size="sm"
-														type="button"
 														disabled={togglePending}
 														onClick={() => onToggle(site.id, site.status)}
 													>
@@ -2458,7 +2737,7 @@ export const ChannelsView = ({
 					<DialogContent
 						aria-labelledby="site-modal-title"
 						aria-modal="true"
-						class="flex max-h-[85vh] max-w-2xl flex-col overflow-hidden"
+						class="flex max-h-[85vh] max-w-5xl flex-col overflow-hidden"
 					>
 						<DialogHeader>
 							<div>
@@ -2649,6 +2928,7 @@ export const ChannelsView = ({
 									</Card>
 								)}
 							</Card>
+							{isEditing && renderModelManagementCard()}
 							{needsSystemToken && (
 								<Card class="p-4">
 									<p class="text-xs font-semibold uppercase tracking-widest text-[color:var(--app-ink-muted)]">

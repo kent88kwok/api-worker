@@ -63,6 +63,8 @@ type SitePayload = {
 	weight?: number;
 	status?: string;
 	site_type?: SiteType;
+	manual_include_models?: unknown;
+	manual_exclude_models?: unknown;
 	checkin_url?: string | null;
 	system_token?: string;
 	system_userid?: string;
@@ -188,6 +190,9 @@ const buildSiteRecord = (
 		last_checkin_message: channel.last_checkin_message ?? null,
 		last_checkin_at: channel.last_checkin_at ?? null,
 		verification: parseSiteVerificationSummary(channel.metadata_json),
+		manual_include_models: metadata.manual_include_models,
+		manual_pending_models: metadata.manual_pending_models,
+		manual_exclude_models: metadata.manual_exclude_models,
 		cooling_models: coolingModels,
 		cooling_model_count: coolingModels.length,
 		cooling_max_remaining_seconds: cooldownMaxRemainingSeconds,
@@ -302,6 +307,8 @@ sites.post("/", async (c) => {
 	}
 	const metadataJson = buildSiteMetadata(null, {
 		site_type: siteType,
+		manual_include_models: body.manual_include_models,
+		manual_exclude_models: body.manual_exclude_models,
 	});
 	await insertChannel(c.env.DB, {
 		id,
@@ -367,12 +374,20 @@ sites.patch("/:id", async (c) => {
 	if (shouldUpdateTokens && callTokens.length === 0) {
 		return jsonError(c, 400, "missing_call_tokens", "missing_call_tokens");
 	}
-	const metadataJson =
-		body.site_type !== undefined
-			? buildSiteMetadata(current.metadata_json, {
-					site_type: nextSiteType,
-				})
-			: (current.metadata_json ?? null);
+	const shouldUpdateMetadata =
+		body.site_type !== undefined ||
+		body.manual_include_models !== undefined ||
+		body.manual_exclude_models !== undefined;
+	const metadataJson = shouldUpdateMetadata
+		? buildSiteMetadata(current.metadata_json, {
+				site_type:
+					body.site_type !== undefined
+						? nextSiteType
+						: currentMetadata.site_type,
+				manual_include_models: body.manual_include_models,
+				manual_exclude_models: body.manual_exclude_models,
+			})
+		: (current.metadata_json ?? null);
 	const nextSystemToken =
 		body.system_token !== undefined || body.checkin_token !== undefined
 			? trimValue(body.system_token ?? body.checkin_token)

@@ -2,10 +2,8 @@ import { normalizeSiteType } from "../../../shared-core/src";
 import { type Context, Hono } from "hono";
 import type { AppEnv } from "../env";
 import { newApiAuth } from "../middleware/newApiAuth";
-import {
-	collectUniqueModelIds,
-	extractModelIds,
-} from "../services/channel-models";
+import { extractModelIds } from "../services/channel-models";
+import { listEffectiveModelsByChannel } from "../services/channel-effective-models";
 import {
 	channelExists,
 	countChannels,
@@ -66,7 +64,21 @@ function readTag(metadataJson: string | null | undefined): string | null {
 
 async function handleModelsList(c: Context<AppEnv>) {
 	const channels = await listActiveChannels(c.env.DB);
-	const data = collectUniqueModelIds(channels).map((id) => ({ id, name: id }));
+	const map = await listEffectiveModelsByChannel(
+		c.env.DB,
+		channels.map((channel) => ({
+			id: channel.id,
+			models_json: channel.models_json,
+			metadata_json: channel.metadata_json,
+		})),
+	);
+	const modelSet = new Set<string>();
+	for (const models of map.values()) {
+		for (const id of models) {
+			modelSet.add(id);
+		}
+	}
+	const data = Array.from(modelSet).map((id) => ({ id, name: id }));
 	return newApiSuccess(c, data);
 }
 

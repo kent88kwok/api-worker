@@ -13,6 +13,9 @@ export type EndpointOverrides = {
 export type SiteMetadata = {
 	site_type: SiteType;
 	endpoint_overrides: EndpointOverrides;
+	manual_include_models: string[];
+	manual_pending_models: string[];
+	manual_exclude_models: string[];
 };
 
 const DEFAULT_SITE_TYPE: SiteType = "new-api";
@@ -27,6 +30,31 @@ const normalizeOverride = (value: unknown): string | null => {
 	}
 	return normalizeBaseUrl(trimmed);
 };
+
+function normalizeModelList(value: unknown): string[] {
+	const output: string[] = [];
+	const seen = new Set<string>();
+	const append = (item: unknown) => {
+		const normalized = String(item ?? "").trim();
+		if (!normalized || seen.has(normalized)) {
+			return;
+		}
+		seen.add(normalized);
+		output.push(normalized);
+	};
+	if (Array.isArray(value)) {
+		for (const item of value) {
+			append(item);
+		}
+		return output;
+	}
+	if (typeof value === "string") {
+		for (const item of value.split(/[\n,]/)) {
+			append(item);
+		}
+	}
+	return output;
+}
 
 export function parseSiteMetadata(
 	raw: string | null | undefined,
@@ -44,6 +72,9 @@ export function parseSiteMetadata(
 			image_url: normalizeOverride(overrides.image_url),
 			embedding_url: normalizeOverride(overrides.embedding_url),
 		},
+		manual_include_models: normalizeModelList(parsed.manual_include_models),
+		manual_pending_models: normalizeModelList(parsed.manual_pending_models),
+		manual_exclude_models: normalizeModelList(parsed.manual_exclude_models),
 	};
 }
 
@@ -52,6 +83,8 @@ export function buildSiteMetadata(
 	updates: {
 		site_type?: SiteType;
 		endpoint_overrides?: EndpointOverrides | null;
+		manual_include_models?: unknown;
+		manual_exclude_models?: unknown;
 	},
 ): string | null {
 	const base = safeJsonParse<Record<string, unknown>>(existing, {});
@@ -66,6 +99,22 @@ export function buildSiteMetadata(
 				updates.endpoint_overrides.embedding_url,
 			),
 		};
+	}
+	if (updates.manual_include_models !== undefined) {
+		const models = normalizeModelList(updates.manual_include_models);
+		if (models.length > 0) {
+			base.manual_include_models = models;
+		} else {
+			delete base.manual_include_models;
+		}
+	}
+	if (updates.manual_exclude_models !== undefined) {
+		const models = normalizeModelList(updates.manual_exclude_models);
+		if (models.length > 0) {
+			base.manual_exclude_models = models;
+		} else {
+			delete base.manual_exclude_models;
+		}
 	}
 	return Object.keys(base).length > 0 ? JSON.stringify(base) : null;
 }

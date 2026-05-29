@@ -35,6 +35,9 @@ export type Site = {
 	checkin_enabled?: boolean;
 	checkin_id?: string | null;
 	checkin_url?: string | null;
+	manual_include_models?: string[];
+	manual_pending_models?: string[];
+	manual_exclude_models?: string[];
 	call_tokens: SiteCallToken[];
 	last_checkin_date?: string | null;
 	last_checkin_status?: string | null;
@@ -373,10 +376,18 @@ export type RuntimeProxyConfig = RuntimeProxySettings & {
 export type ModelChannel = {
 	id: string;
 	name: string;
+	status: "enabled" | "pending" | "excluded";
 };
+
+export type ModelStatusUpdate = ModelChannel["status"] | "auto";
 
 export type ModelItem = {
 	id: string;
+	counts?: {
+		enabled: number;
+		pending: number;
+		excluded: number;
+	};
 	channels: ModelChannel[];
 };
 

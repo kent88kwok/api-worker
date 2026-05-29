@@ -3,7 +3,10 @@ import {
 	parseChannelMetadata,
 	resolveMappedModel,
 } from "./channel-metadata";
-import { extractModels } from "./channel-models";
+import {
+	parseManualModelConfig,
+	resolveEffectiveModelIds,
+} from "./channel-effective-models";
 import type { ChannelRecord } from "./channel-types";
 
 function normalizeKnownModel(value: string | null | undefined): string | null {
@@ -31,24 +34,13 @@ function collectKnownChannelModels(
 	channel: ChannelRecord,
 	verifiedModelsByChannel: Map<string, Set<string>>,
 ): string[] {
-	const output: string[] = [];
-	const appendModel = (value: string | null | undefined) => {
-		const normalized = normalizeKnownModel(value);
-		if (!normalized || output.includes(normalized)) {
-			return;
-		}
-		output.push(normalized);
-	};
-	const verified = verifiedModelsByChannel.get(channel.id);
-	if (verified && verified.size > 0) {
-		for (const model of verified) {
-			appendModel(model);
-		}
-	}
-	for (const entry of extractModels(channel)) {
-		appendModel(entry.id);
-	}
-	return output;
+	return resolveEffectiveModelIds({
+		channel,
+		verifiedModels:
+			verifiedModelsByChannel.get(channel.id) ?? new Set<string>(),
+	})
+		.map((model) => normalizeKnownModel(model))
+		.filter((model): model is string => Boolean(model));
 }
 
 export function resolveUpstreamModelForChannel(
@@ -91,6 +83,14 @@ function channelSupportsModel(
 		verifiedModelsByChannel,
 	);
 	if (!resolved.model) {
+		return false;
+	}
+	const manual = parseManualModelConfig(channel.metadata_json);
+	const excludedModels = new Set(manual.exclude);
+	if (
+		(model && excludedModels.has(model)) ||
+		(resolved.model && excludedModels.has(resolved.model))
+	) {
 		return false;
 	}
 	if (hasExplicitModelMapping(metadata, model)) {

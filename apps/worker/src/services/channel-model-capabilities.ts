@@ -470,6 +470,27 @@ export async function clearChannelModelCooldown(
 	return Number(result.meta?.changes ?? 0) > 0;
 }
 
+export async function deleteChannelModelCapability(
+	db: D1Database,
+	channelId: string,
+	model: string | null,
+): Promise<boolean> {
+	if (!model) {
+		return false;
+	}
+	const normalizedModel = String(model).trim();
+	if (!normalizedModel) {
+		return false;
+	}
+	const result = await db
+		.prepare(
+			"DELETE FROM channel_model_capabilities WHERE channel_id = ? AND model = ?",
+		)
+		.bind(channelId, normalizedModel)
+		.run();
+	return Number(result.meta?.changes ?? 0) > 0;
+}
+
 export async function recordChannelDisableHit(
 	db: D1Database,
 	channelId: string,

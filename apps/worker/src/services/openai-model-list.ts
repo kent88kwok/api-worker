@@ -1,5 +1,5 @@
 import type { D1Database } from "@cloudflare/workers-types";
-import { listModelEntriesWithFallback } from "./channel-model-capabilities";
+import { listEffectiveModelEntries } from "./channel-effective-models";
 import type { ChannelRow } from "./channel-types";
 
 export type OpenAiModelListItem = {
@@ -45,8 +45,10 @@ export function buildOpenAiModelListPayload(
 
 export async function listOpenAiModelsForChannels(
 	db: D1Database,
-	channels: Array<Pick<ChannelRow, "id" | "name" | "models_json">>,
+	channels: Array<
+		Pick<ChannelRow, "id" | "name" | "models_json" | "metadata_json">
+	>,
 ): Promise<OpenAiModelListPayload> {
-	const entries = await listModelEntriesWithFallback(db, channels);
+	const entries = await listEffectiveModelEntries(db, channels);
 	return buildOpenAiModelListPayload(entries.map((entry) => entry.id));
 }

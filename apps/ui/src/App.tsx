@@ -52,6 +52,8 @@ import type {
 	CheckinSummary,
 	DashboardData,
 	DashboardQuery,
+	ModelChannel,
+	ModelStatusUpdate,
 	NoticeMessage,
 	NoticeTone,
 	Settings,
@@ -616,6 +618,12 @@ const App = () => {
 			...prev,
 			sites: result.sites,
 		}));
+		setEditingSite((prev) => {
+			if (!prev) {
+				return prev;
+			}
+			return result.sites.find((site) => site.id === prev.id) ?? prev;
+		});
 		setSiteTaskReports(result.task_reports ?? {});
 	}, [apiFetch]);
 
@@ -623,7 +631,16 @@ const App = () => {
 		const result = await apiFetch<{
 			models: Array<{
 				id: string;
-				channels: Array<{ id: string; name: string }>;
+				counts?: {
+					enabled: number;
+					pending: number;
+					excluded: number;
+				};
+				channels: Array<{
+					id: string;
+					name: string;
+					status: ModelChannel["status"];
+				}>;
 			}>;
 		}>("/api/models");
 		setData((prev) => ({ ...prev, models: result.models }));
@@ -714,7 +731,7 @@ const App = () => {
 					await Promise.all([loadDashboard(), loadSites(), loadTokens()]);
 				}
 				if (tabId === "channels") {
-					await loadSites();
+					await Promise.all([loadSites(), loadModels()]);
 				}
 				if (tabId === "models") {
 					await loadModels();
@@ -1281,7 +1298,7 @@ const App = () => {
 						method: "POST",
 					},
 				);
-				await loadSites();
+				await Promise.all([loadSites(), loadModels()]);
 				openVerificationResult("站点验证结果", result);
 				pushNotice(
 					result.verdict === "serving" || result.verdict === "recoverable"
@@ -1301,6 +1318,7 @@ const App = () => {
 			apiFetch,
 			endAction,
 			isActionPending,
+			loadModels,
 			loadSites,
 			openVerificationResult,
 			pushNotice,
@@ -1325,7 +1343,7 @@ const App = () => {
 					method: "POST",
 				},
 			);
-			await loadSites();
+			await Promise.all([loadSites(), loadModels()]);
 			storeSiteTaskReport({
 				kind: "verify-active",
 				runs_at: report.runs_at,
@@ -1352,6 +1370,7 @@ const App = () => {
 		data.sites.length,
 		endAction,
 		isActionPending,
+		loadModels,
 		loadSites,
 		pushNotice,
 		startAction,
@@ -1371,7 +1390,7 @@ const App = () => {
 					method: "POST",
 				},
 			);
-			await loadSites();
+			await Promise.all([loadSites(), loadModels()]);
 			if (report.summary.total === 0) {
 				pushNotice("info", "当前没有已禁用站点需要评估恢复");
 				return;
@@ -1394,6 +1413,7 @@ const App = () => {
 		apiFetch,
 		endAction,
 		isActionPending,
+		loadModels,
 		loadSites,
 		pushNotice,
 		startAction,
@@ -1473,7 +1493,7 @@ const App = () => {
 					siteId = created.id;
 				}
 				closeSiteModal();
-				await loadSites();
+				await Promise.all([loadSites(), loadModels()]);
 				if (siteId) {
 					pushNotice("info", `站点已${actionLabel}，正在自动验证...`);
 					await handleSiteVerify(siteId);
@@ -2058,7 +2078,7 @@ const App = () => {
 			startAction(actionKey);
 			try {
 				await apiFetch(`/api/sites/${id}`, { method: "DELETE" });
-				await loadSites();
+				await Promise.all([loadSites(), loadModels()]);
 				pushNotice("success", "站点已删除");
 				if (editingSite?.id === id) {
 					closeSiteModal();
@@ -2141,7 +2161,15 @@ const App = () => {
 				endAction(actionKey);
 			}
 		},
-		[apiFetch, endAction, isActionPending, loadSites, pushNotice, startAction],
+		[
+			apiFetch,
+			endAction,
+			isActionPending,
+			loadModels,
+			loadSites,
+			pushNotice,
+			startAction,
+		],
 	);
 
 	const handleDisableFailedSite = useCallback(
@@ -2185,7 +2213,15 @@ const App = () => {
 				endAction(actionKey);
 			}
 		},
-		[apiFetch, endAction, isActionPending, loadSites, pushNotice, startAction],
+		[
+			apiFetch,
+			endAction,
+			isActionPending,
+			loadModels,
+			loadSites,
+			pushNotice,
+			startAction,
+		],
 	);
 
 	const handleDisableAllFailedSites = useCallback(async () => {
@@ -2220,7 +2256,7 @@ const App = () => {
 				)
 				.map((item) => item.value);
 			const failedCount = settled.length - successIds.length;
-			await loadSites();
+			await Promise.all([loadSites(), loadModels()]);
 			setSiteTaskReports((prev) => {
 				const current = prev["verify-active"];
 				if (
@@ -2264,6 +2300,7 @@ const App = () => {
 		apiFetch,
 		endAction,
 		isActionPending,
+		loadModels,
 		loadSites,
 		pushNotice,
 		startAction,
@@ -2485,7 +2522,7 @@ const App = () => {
 				>(`/api/sites/${site.id}/refresh`, {
 					method: "POST",
 				});
-				await loadSites();
+				await Promise.all([loadSites(), loadModels()]);
 				syncRefreshTaskItem(result, new Date().toISOString());
 				const failedTokens = getRefreshFailedTokenLabels(result);
 				const failureDetails = getRefreshFailureDetails(result);
@@ -2523,6 +2560,7 @@ const App = () => {
 			apiFetch,
 			endAction,
 			isActionPending,
+			loadModels,
 			loadSites,
 			pushNotice,
 			startAction,
@@ -2543,7 +2581,7 @@ const App = () => {
 					method: "POST",
 				},
 			);
-			await loadSites();
+			await Promise.all([loadSites(), loadModels()]);
 			storeSiteTaskReport({
 				kind: "refresh-active",
 				runs_at: report.runs_at,
@@ -2577,11 +2615,55 @@ const App = () => {
 		apiFetch,
 		endAction,
 		isActionPending,
+		loadModels,
 		loadSites,
 		pushNotice,
 		startAction,
 		storeSiteTaskReport,
 	]);
+
+	const handleSetModelStatus = useCallback(
+		async (channelId: string, model: string, status: ModelStatusUpdate) => {
+			const actionKey = buildActionKey(`model:${channelId}:${model}`);
+			if (isActionPending(actionKey)) {
+				return;
+			}
+			startAction(actionKey);
+			try {
+				await apiFetch("/api/models/status", {
+					method: "POST",
+					body: JSON.stringify({
+						channel_id: channelId,
+						model,
+						status,
+					}),
+				});
+				await Promise.all([loadModels(), loadSites()]);
+				const statusLabel =
+					status === "enabled"
+						? "正式"
+						: status === "pending"
+							? "待加入"
+							: status === "excluded"
+								? "已排除"
+								: "已删除";
+				pushNotice("success", `模型已更新为${statusLabel}：${model}`);
+			} catch (error) {
+				pushNotice("error", (error as Error).message);
+			} finally {
+				endAction(actionKey);
+			}
+		},
+		[
+			apiFetch,
+			endAction,
+			isActionPending,
+			loadModels,
+			loadSites,
+			pushNotice,
+			startAction,
+		],
+	);
 
 	const handleUsageRefresh = useCallback(async () => {
 		const actionKey = buildActionKey("usage:refresh");
@@ -2701,6 +2783,7 @@ const App = () => {
 		if (activeTab === "channels") {
 			return (
 				<ChannelsView
+					models={data.models}
 					sites={data.sites}
 					siteForm={siteForm}
 					sitePage={sitePage}
@@ -2735,6 +2818,7 @@ const App = () => {
 					onDisableFailedSite={handleDisableFailedSite}
 					onDisableAllFailedSites={requestDisableAllFailedSites}
 					onClearCoolingModel={handleClearCoolingModel}
+					onSetModelStatus={handleSetModelStatus}
 				/>
 			);
 		}
