@@ -91,6 +91,7 @@ import { ModelsView } from "./features/ModelsView";
 import { PricingView } from "./features/PricingView";
 import { isRequestEntryFormatAllowedForSiteType } from "./features/request-entry-formats";
 import { SettingsView } from "./features/SettingsView";
+import { shouldVerifyAfterSiteSubmit } from "./features/site-model-display";
 import { TokensView } from "./features/TokensView";
 import { UsageView } from "./features/UsageView";
 
@@ -362,6 +363,8 @@ const App = () => {
 	const [settingsFormSnapshot, setSettingsFormSnapshot] =
 		useState<SettingsForm>(initialSettingsForm);
 	const [modelPrices, setModelPrices] = useState<ModelPrice[]>([]);
+	const [lastPricingSyncResult, setLastPricingSyncResult] =
+		useState<PricingSyncResult | null>(null);
 	const [backupSettings, setBackupSettings] = useState<BackupSettings>(
 		initialBackupSettings,
 	);
@@ -374,10 +377,6 @@ const App = () => {
 	const [backupImportFile, setBackupImportFile] = useState<File | null>(null);
 	const [retryErrorCodeOptions, setRetryErrorCodeOptions] = useState<string[]>(
 		[],
-	);
-	const [sitePage, setSitePage] = useState(1);
-	const [sitePageSize, setSitePageSize] = useState(() =>
-		loadPageSizePref("pageSize:sites", 10),
 	);
 	const [siteSearch, setSiteSearch] = useState("");
 	const [siteSort, setSiteSort] = useState<SiteSortState>({
@@ -914,6 +913,7 @@ const App = () => {
 				"qwen",
 				"moonshot",
 				"zhipu",
+				"openrouter",
 			],
 			pricing_default_markup: String(
 				data.settings.pricing_settings?.default_markup ?? 1,
@@ -925,6 +925,9 @@ const App = () => {
 		};
 		setSettingsForm(nextSettingsForm);
 		setSettingsFormSnapshot(nextSettingsForm);
+		setLastPricingSyncResult(
+			data.settings.pricing_settings?.last_sync_result ?? null,
+		);
 	}, [data.settings]);
 
 	const handleLogin = useCallback(
@@ -1044,16 +1047,6 @@ const App = () => {
 
 	const handleTokenFormChange = useCallback((patch: Partial<TokenForm>) => {
 		setTokenForm((prev) => ({ ...prev, ...patch }));
-	}, []);
-
-	const handleSitePageChange = useCallback((next: number) => {
-		setSitePage(next);
-	}, []);
-
-	const handleSitePageSizeChange = useCallback((next: number) => {
-		persistPageSizePref("pageSize:sites", next);
-		setSitePageSize(next);
-		setSitePage(1);
 	}, []);
 
 	const handleSiteSearchChange = useCallback((next: string) => {
@@ -1576,7 +1569,10 @@ const App = () => {
 				}
 				closeSiteModal();
 				await Promise.all([loadSites(), loadModels()]);
-				if (siteId) {
+				if (
+					siteId &&
+					shouldVerifyAfterSiteSubmit(editingSite ? "edit" : "create")
+				) {
 					pushNotice("info", `站点已${actionLabel}，正在自动验证...`);
 					await handleSiteVerify(siteId);
 				} else {
@@ -2784,6 +2780,7 @@ const App = () => {
 					sources: settingsForm.pricing_sync_sources.filter(Boolean),
 				}),
 			});
+			setLastPricingSyncResult(result);
 			await loadPricingModels();
 			const total = result.items.reduce((sum, item) => sum + item.count, 0);
 			const exactTotal = result.items.reduce(
@@ -2940,15 +2937,6 @@ const App = () => {
 		() => sortSites(filteredSites, siteSort),
 		[filteredSites, siteSort],
 	);
-	const siteTotal = sortedSites.length;
-	const siteTotalPages = useMemo(
-		() => Math.max(1, Math.ceil(siteTotal / sitePageSize)),
-		[siteTotal, sitePageSize],
-	);
-	const pagedSites = useMemo(() => {
-		const start = (sitePage - 1) * sitePageSize;
-		return sortedSites.slice(start, start + sitePageSize);
-	}, [sitePage, sitePageSize, sortedSites]);
 	const tokenTotal = data.tokens.length;
 	const tokenTotalPages = useMemo(
 		() => Math.max(1, Math.ceil(tokenTotal / tokenPageSize)),
@@ -2962,14 +2950,6 @@ const App = () => {
 		() => Math.max(1, Math.ceil(usageTotal / usagePageSize)),
 		[usagePageSize, usageTotal],
 	);
-
-	useEffect(() => {
-		setSitePage((prev) => Math.min(prev, siteTotalPages));
-	}, [siteTotalPages]);
-
-	useEffect(() => {
-		setSitePage(1);
-	}, [siteSearch, siteSort.key, siteSort.direction]);
 
 	useEffect(() => {
 		setTokenPage((prev) => Math.min(prev, tokenTotalPages));
@@ -3037,11 +3017,7 @@ const App = () => {
 					models={data.models}
 					sites={data.sites}
 					siteForm={siteForm}
-					sitePage={sitePage}
-					sitePageSize={sitePageSize}
-					siteTotal={siteTotal}
-					siteTotalPages={siteTotalPages}
-					pagedSites={pagedSites}
+					visibleSites={sortedSites}
 					editingSite={editingSite}
 					isSiteModalOpen={isSiteModalOpen}
 					taskReports={siteTaskReports}
@@ -3057,8 +3033,6 @@ const App = () => {
 					onRefreshSite={handleRefreshSite}
 					onToggle={handleSiteToggle}
 					onDelete={requestSiteDelete}
-					onPageChange={handleSitePageChange}
-					onPageSizeChange={handleSitePageSizeChange}
 					onSearchChange={handleSiteSearchChange}
 					onSortChange={handleSiteSortChange}
 					onFormChange={handleSiteFormChange}
@@ -3081,6 +3055,7 @@ const App = () => {
 				<PricingView
 					prices={modelPrices}
 					pricingCurrency={settingsForm.pricing_currency}
+					lastPricingSyncResult={lastPricingSyncResult}
 					isPricingSyncing={isActionPending(buildActionKey("pricing:sync"))}
 					isPricingSaving={
 						isActionPending(buildActionKey("pricing:create")) ||

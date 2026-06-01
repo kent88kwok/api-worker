@@ -373,6 +373,7 @@ export type PricingSettings = {
 	default_markup: number;
 	currency: PricingCurrency;
 	usd_cny_rate: number;
+	last_sync_result?: PricingSyncResult | null;
 };
 
 export type BackupSyncMode = "push" | "pull" | "two_way";

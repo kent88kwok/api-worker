@@ -116,6 +116,7 @@ const pricingSourceOptions = [
 	{ value: "qwen", label: "通义千问" },
 	{ value: "moonshot", label: "Moonshot" },
 	{ value: "zhipu", label: "智谱" },
+	{ value: "openrouter", label: "OpenRouter（渠道价格）" },
 ];
 
 /**

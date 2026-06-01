@@ -178,6 +178,7 @@ pricing.post("/sync", async (c) => {
 		targetCurrency: pricingSettings.currency,
 		usdCnyRate,
 	});
+	await setPricingSettings(c.env.DB, { last_sync_result: result });
 	await triggerBackupAfterDataChange(c.env.DB);
 	return c.json(result);
 });

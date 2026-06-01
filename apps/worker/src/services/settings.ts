@@ -76,8 +76,10 @@ const DEFAULT_PRICING_SYNC_SOURCES = [
 	"qwen",
 	"moonshot",
 	"zhipu",
+	"openrouter",
 ];
 const DEFAULT_PRICING_DEFAULT_MARKUP = 1;
+const DEFAULT_PRICING_LAST_SYNC_RESULT = null;
 const SETTING_SNAPSHOT_TTL_MS = 1000;
 const RUNTIME_SETTING_SNAPSHOT_TTL_MS = 5000;
 const BACKUP_SETTING_SNAPSHOT_TTL_MS = 5000;
@@ -144,6 +146,7 @@ const PRICING_SYNC_SOURCES_KEY = "pricing_sync_sources";
 const PRICING_DEFAULT_MARKUP_KEY = "pricing_default_markup";
 const PRICING_CURRENCY_KEY = "pricing_currency";
 const PRICING_USD_CNY_RATE_KEY = "pricing_usd_cny_rate";
+const PRICING_LAST_SYNC_RESULT_KEY = "pricing_last_sync_result";
 
 const RUNTIME_SETTING_KEYS = [
 	PROXY_UPSTREAM_TIMEOUT_KEY,
@@ -198,6 +201,7 @@ const PRICING_SETTING_KEYS = [
 	PRICING_DEFAULT_MARKUP_KEY,
 	PRICING_CURRENCY_KEY,
 	PRICING_USD_CNY_RATE_KEY,
+	PRICING_LAST_SYNC_RESULT_KEY,
 ] as const;
 
 export const BACKUP_LOCAL_ONLY_SETTING_KEYS = [...BACKUP_SETTING_KEYS];
@@ -298,6 +302,7 @@ export type PricingSettings = {
 	default_markup: number;
 	currency: "USD" | "CNY";
 	usd_cny_rate: number;
+	last_sync_result: unknown | null;
 };
 
 type SettingSnapshot<T> = {
@@ -1175,6 +1180,21 @@ function parsePricingSources(value: string | null): string[] {
 	return parsed;
 }
 
+function parsePricingLastSyncResult(value: string | null): unknown | null {
+	if (!value) {
+		return DEFAULT_PRICING_LAST_SYNC_RESULT;
+	}
+	try {
+		const parsed = JSON.parse(value) as unknown;
+		if (!parsed || typeof parsed !== "object") {
+			return DEFAULT_PRICING_LAST_SYNC_RESULT;
+		}
+		return parsed;
+	} catch {
+		return DEFAULT_PRICING_LAST_SYNC_RESULT;
+	}
+}
+
 export async function getPricingSettings(
 	db: D1Database,
 ): Promise<PricingSettings> {
@@ -1214,6 +1234,9 @@ export async function getPricingSettings(
 			Number.isFinite(usdCnyRate) && usdCnyRate > 0
 				? usdCnyRate
 				: DEFAULT_PRICING_USD_CNY_RATE,
+		last_sync_result: parsePricingLastSyncResult(
+			settings[PRICING_LAST_SYNC_RESULT_KEY] ?? null,
+		),
 	};
 	pricingSettingsSnapshot = {
 		value,
@@ -1278,6 +1301,17 @@ export async function setPricingSettings(
 				db,
 				PRICING_USD_CNY_RATE_KEY,
 				String(Math.max(0.0001, Number(update.usd_cny_rate))),
+			),
+		);
+	}
+	if (update.last_sync_result !== undefined) {
+		tasks.push(
+			upsertSetting(
+				db,
+				PRICING_LAST_SYNC_RESULT_KEY,
+				update.last_sync_result
+					? JSON.stringify(update.last_sync_result)
+					: "",
 			),
 		);
 	}

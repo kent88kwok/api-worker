@@ -285,10 +285,13 @@ export class CheckinScheduler {
 					} catch {
 						usdCnyRate = pricingSettings.usd_cny_rate;
 					}
-					await syncModelPrices(this.env.DB, {
+					const pricingSyncResult = await syncModelPrices(this.env.DB, {
 						sources: pricingSettings.sync_sources,
 						targetCurrency: pricingSettings.currency,
 						usdCnyRate,
+					});
+					await setPricingSettings(this.env.DB, {
+						last_sync_result: pricingSyncResult,
 					});
 				} catch {
 					// Keep scheduler alive if a pricing page cannot be parsed.

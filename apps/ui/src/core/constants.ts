@@ -111,6 +111,7 @@ export const initialSettingsForm: SettingsForm = {
 		"qwen",
 		"moonshot",
 		"zhipu",
+		"openrouter",
 	],
 	pricing_default_markup: "1",
 	pricing_currency: "CNY",

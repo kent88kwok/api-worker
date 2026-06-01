@@ -18,13 +18,22 @@ import {
 	TableHeader,
 	TableRow,
 } from "../components/ui";
-import type { ModelPrice, ModelPriceInput } from "../core/types";
+import type {
+	ModelPrice,
+	ModelPriceInput,
+	PricingSyncResult,
+} from "../core/types";
 import {
 	formatDateTime,
 	loadColumnPrefs,
 	persistColumnPrefs,
 } from "../core/utils";
-import { getPriceSourceLabel } from "./pricing-display";
+import {
+	formatPricingSyncItemLabel,
+	getPricingSyncMessageLabel,
+	getPriceSourceLabel,
+	getPricingSyncItemTone,
+} from "./pricing-display";
 
 type PricingViewProps = {
 	prices: ModelPrice[];
@@ -38,6 +47,7 @@ type PricingViewProps = {
 		patch: Partial<ModelPriceInput>,
 	) => Promise<void> | void;
 	onPricingDelete: (price: ModelPrice) => void;
+	lastPricingSyncResult?: PricingSyncResult | null;
 };
 
 const priceColumns = [
@@ -127,6 +137,11 @@ const parsePriceValue = (value: string): number | null => {
 	return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
 };
 
+const formatSyncStatusTime = (value: string) => {
+	const formatted = formatDateTime(value);
+	return formatted === "-" ? "-" : formatted.slice(11, 16) || formatted;
+};
+
 const buildEditForm = (price: ModelPrice): PriceEditForm => ({
 	input_price_per_1m: String(price.input_price_per_1m),
 	cache_read_price_per_1m: String(price.cache_read_price_per_1m),
@@ -181,6 +196,7 @@ export const PricingView = ({
 	onPricingCreate,
 	onPricingUpdate,
 	onPricingDelete,
+	lastPricingSyncResult,
 }: PricingViewProps) => {
 	const [visibleColumns, setVisibleColumns] = useState(() =>
 		loadColumnPrefs(
@@ -201,6 +217,7 @@ export const PricingView = ({
 	const [editingPriceId, setEditingPriceId] = useState<string | null>(null);
 	const [editForm, setEditForm] = useState<PriceEditForm | null>(null);
 	const [editError, setEditError] = useState<string | null>(null);
+	const [isSyncReportOpen, setSyncReportOpen] = useState(false);
 	const sortedPrices = useMemo(
 		() =>
 			[...prices].sort((left, right) => {
@@ -248,7 +265,7 @@ export const PricingView = ({
 				price.model_pattern,
 				price.model_name,
 				price.currency,
-				getPriceSourceLabel(price.source, price.sync_status),
+				getPriceSourceLabel(price.source, price.sync_status, price.source_url),
 			]
 				.join(" ")
 				.toLowerCase()
@@ -259,6 +276,22 @@ export const PricingView = ({
 		searchText.trim().length > 0 ||
 		sourceFilter !== "all" ||
 		statusFilter !== "all";
+	const syncFailedCount =
+		lastPricingSyncResult?.items.filter((item) => !item.ok || item.count <= 0)
+			.length ?? 0;
+	const syncUpdatedCount =
+		lastPricingSyncResult?.items.reduce((sum, item) => sum + item.count, 0) ??
+		0;
+	const syncStatusText = lastPricingSyncResult
+		? `${formatSyncStatusTime(lastPricingSyncResult.runs_at)}  ${
+				syncFailedCount > 0 ? `失败 ${syncFailedCount}` : "完成"
+			}`
+		: "暂无";
+	const syncStatusClass = lastPricingSyncResult
+		? syncFailedCount > 0
+			? "border-amber-200 bg-amber-50/90 text-amber-700 transition-colors hover:brightness-[0.98]"
+			: "border-slate-200 bg-slate-50/90 text-slate-600 transition-colors hover:brightness-[0.98]"
+		: "border-white/60 bg-white/65 text-[color:var(--app-ink-muted)]/80 cursor-default";
 	const updateColumns = (next: string[]) => {
 		setVisibleColumns(next);
 		persistColumnPrefs("columns:model-prices", next);
@@ -427,8 +460,71 @@ export const PricingView = ({
 					>
 						{isPricingSyncing ? "同步中..." : "同步价格"}
 					</Button>
+					<button
+						class={`inline-flex h-9 items-center rounded-full border px-3 text-[11px] leading-none ${syncStatusClass}`}
+						type="button"
+						disabled={!lastPricingSyncResult}
+						onClick={() => setSyncReportOpen(Boolean(lastPricingSyncResult))}
+					>
+						{syncStatusText}
+					</button>
 				</div>
 			</div>
+			<Dialog
+				open={isSyncReportOpen && Boolean(lastPricingSyncResult)}
+				onClose={() => setSyncReportOpen(false)}
+			>
+				<DialogContent class="max-w-4xl" aria-modal="true">
+					<DialogHeader>
+						<div>
+							<DialogTitle>最近同步结果</DialogTitle>
+							<DialogDescription>
+								{lastPricingSyncResult
+									? `最后记录 ${formatDateTime(lastPricingSyncResult.runs_at)} · ${lastPricingSyncResult.currency} · USD/CNY ${lastPricingSyncResult.usd_cny_rate} · 更新 ${syncUpdatedCount} 条`
+									: "暂无同步记录。"}
+							</DialogDescription>
+						</div>
+						<Button
+							size="sm"
+							type="button"
+							onClick={() => setSyncReportOpen(false)}
+						>
+							关闭
+						</Button>
+					</DialogHeader>
+					<div class="mt-3 max-h-[55vh] space-y-2 overflow-y-auto">
+						{lastPricingSyncResult?.items.length ? (
+							lastPricingSyncResult.items.map((item) => (
+								<div
+									class="grid gap-3 rounded-xl border border-white/60 bg-white/80 px-4 py-3 md:grid-cols-[minmax(0,0.75fr)_minmax(0,1.6fr)_auto]"
+									key={item.source}
+								>
+									<div class="min-w-0">
+										<p class="truncate text-sm font-semibold text-[color:var(--app-ink)]">
+											{item.source}
+										</p>
+										<p class="text-[11px] text-[color:var(--app-ink-muted)]">
+											{item.ok && item.count > 0 ? "成功" : "失败"}
+										</p>
+									</div>
+									<p class="break-words text-xs leading-5 text-[color:var(--app-ink)]">
+										{formatPricingSyncItemLabel(item)}
+									</p>
+									<div class="flex justify-end">
+										<Chip variant={getPricingSyncItemTone(item)}>
+											{getPricingSyncMessageLabel(item.message)}
+										</Chip>
+									</div>
+								</div>
+							))
+						) : (
+							<p class="text-xs text-[color:var(--app-ink-muted)]">
+								暂无同步记录。
+							</p>
+						)}
+					</div>
+				</DialogContent>
+			</Dialog>
 			<Dialog open={isCreateOpen} onClose={() => setCreateOpen(false)}>
 				<DialogContent
 					aria-labelledby="price-create-title"
@@ -666,13 +762,17 @@ export const PricingView = ({
 										)}
 										{visibleColumnSet.has("source") && (
 											<TableCell>
-												<Chip
+													<Chip
 													variant={getPriceSourceVariant(
 														price.source,
 														price.sync_status,
 													)}
 												>
-													{getPriceSourceLabel(price.source, price.sync_status)}
+													{getPriceSourceLabel(
+														price.source,
+														price.sync_status,
+														price.source_url,
+													)}
 												</Chip>
 											</TableCell>
 										)}
@@ -799,7 +899,6 @@ export const PricingView = ({
 														<Button
 															class="h-8 w-full px-3 text-[11px]"
 															size="sm"
-															variant="ghost"
 															type="button"
 															disabled={isPricingSaving || isEditing}
 															hidden={isEditing}
@@ -823,7 +922,6 @@ export const PricingView = ({
 														<Button
 															class="h-8 w-full px-3 text-[11px]"
 															size="sm"
-															variant={price.enabled ? "ghost" : "primary"}
 															type="button"
 															disabled={isPricingSaving || isEditing}
 															hidden={isEditing}
@@ -851,7 +949,7 @@ export const PricingView = ({
 														<Button
 															class="h-8 w-full px-3 text-[11px]"
 															size="sm"
-															variant="danger"
+															variant="ghost"
 															type="button"
 															disabled={isPricingSaving || isEditing}
 															hidden={isEditing}

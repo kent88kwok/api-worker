@@ -69,11 +69,7 @@ type ChannelsViewProps = {
 	models: ModelItem[];
 	sites: Site[];
 	siteForm: SiteForm;
-	sitePage: number;
-	sitePageSize: number;
-	siteTotal: number;
-	siteTotalPages: number;
-	pagedSites: Site[];
+	visibleSites: Site[];
 	editingSite: Site | null;
 	isSiteModalOpen: boolean;
 	taskReports: SiteTaskReportMap;
@@ -89,8 +85,6 @@ type ChannelsViewProps = {
 	onRefreshSite: (site: Site) => void;
 	onToggle: (id: string, status: string) => void;
 	onDelete: (site: Site) => void;
-	onPageChange: (next: number) => void;
-	onPageSizeChange: (next: number) => void;
 	onSearchChange: (next: string) => void;
 	onSortChange: (next: SiteSortState) => void;
 	onFormChange: (patch: Partial<SiteForm>) => void;
@@ -108,7 +102,6 @@ type ChannelsViewProps = {
 	) => void;
 };
 
-const pageSizeOptions = [10, 20, 50];
 const siteTypeOptions = [
 	{ value: "new-api", label: getSiteTypeLabel("new-api") },
 	{ value: "done-hub", label: getSiteTypeLabel("done-hub") },
@@ -426,11 +419,7 @@ export const ChannelsView = ({
 	models,
 	sites,
 	siteForm,
-	sitePage,
-	sitePageSize,
-	siteTotal,
-	siteTotalPages,
-	pagedSites,
+	visibleSites,
 	editingSite,
 	isSiteModalOpen,
 	taskReports,
@@ -446,8 +435,6 @@ export const ChannelsView = ({
 	onRefreshSite,
 	onToggle,
 	onDelete,
-	onPageChange,
-	onPageSizeChange,
 	onSearchChange,
 	onSortChange,
 	onFormChange,
@@ -461,7 +448,6 @@ export const ChannelsView = ({
 	onSetModelStatus,
 }: ChannelsViewProps) => {
 	const isEditing = Boolean(editingSite);
-	const pageItems = buildPageItems(sitePage, siteTotalPages);
 	const today = getBeijingDateString();
 	const isSubmitting = isActionPending("site:submit");
 	const isVerifyingAll = isActionPending("site:verifyAll");
@@ -980,8 +966,6 @@ export const ChannelsView = ({
 		}
 		onRefreshAll();
 	};
-	const displayPages = siteTotal === 0 ? 0 : siteTotalPages;
-
 	useEffect(() => {
 		if (!cooldownDetailSite) {
 			return;
@@ -2064,7 +2048,7 @@ export const ChannelsView = ({
 											disabled={isActionPending(`site:refresh:${item.site_id}`)}
 											onClick={() =>
 												onRefreshSite(
-													pagedSites.find(
+													visibleSites.find(
 														(site) => site.id === item.site_id,
 													) ?? {
 														id: item.site_id,
@@ -2303,7 +2287,7 @@ export const ChannelsView = ({
 				</Card>
 				<div>
 					<div class="app-mobile-stack space-y-3 md:hidden">
-						{pagedSites.length === 0 ? (
+						{visibleSites.length === 0 ? (
 							<Card class="text-center text-sm text-[color:var(--app-ink-muted)]">
 								<p>暂无站点，请先创建。</p>
 								<Button
@@ -2317,7 +2301,7 @@ export const ChannelsView = ({
 								</Button>
 							</Card>
 						) : (
-							pagedSites.map((site) => {
+							visibleSites.map((site) => {
 								const isActive = site.status === "active";
 								const isToday = site.last_checkin_date === today;
 								const message = isToday ? site.last_checkin_message : null;
@@ -2521,7 +2505,7 @@ export const ChannelsView = ({
 								})}
 							{visibleColumnSet.has("actions") && <div>操作</div>}
 						</div>
-						{pagedSites.length === 0 ? (
+						{visibleSites.length === 0 ? (
 							<div class="app-list-empty px-4 py-10 text-center text-sm text-[color:var(--app-ink-muted)]">
 								<p>暂无站点，请先创建。</p>
 								<Button
@@ -2536,7 +2520,7 @@ export const ChannelsView = ({
 							</div>
 						) : (
 							<div class="app-list-body divide-y divide-white/60">
-								{pagedSites.map((site) => {
+								{visibleSites.map((site) => {
 									const isActive = site.status === "active";
 									const canCheckin = supportsSiteCheckin(site.site_type);
 									const checkinDisabled = !canCheckin;
@@ -2702,36 +2686,6 @@ export const ChannelsView = ({
 								})}
 							</div>
 						)}
-					</div>
-				</div>
-				<div class="app-pagination-bar flex flex-col gap-3 text-xs text-[color:var(--app-ink-muted)] sm:flex-row sm:items-center sm:justify-between">
-					<div class="flex flex-wrap items-center gap-2">
-						<span class="text-xs text-[color:var(--app-ink-muted)]">
-							共 {siteTotal} 条 · {displayPages} 页
-						</span>
-						<Pagination
-							page={sitePage}
-							totalPages={siteTotalPages}
-							items={pageItems}
-							onPageChange={onPageChange}
-						/>
-					</div>
-					<div class="app-page-size-control">
-						<span class="app-page-size-control__label">每页</span>
-						<div class="app-page-size-control__chips">
-							{pageSizeOptions.map((size) => (
-								<button
-									class={`app-page-size-chip ${
-										sitePageSize === size ? "app-page-size-chip--active" : ""
-									}`}
-									key={size}
-									type="button"
-									onClick={() => onPageSizeChange(size)}
-								>
-									{size}
-								</button>
-							))}
-						</div>
 					</div>
 				</div>
 			</div>

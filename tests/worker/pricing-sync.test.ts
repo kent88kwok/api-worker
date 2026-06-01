@@ -78,6 +78,56 @@ describe("pricing sync parser", () => {
 		});
 	});
 
+	it("从 Anthropic 展示名价格表解析 Claude 精确价", () => {
+		const prices = parsePricingPage(
+			"anthropic",
+			"https://example.test/pricing",
+			`
+				<table>
+					<thead>
+						<tr>
+							<th>Model</th>
+							<th>Input</th>
+							<th>Output</th>
+						</tr>
+					</thead>
+					<tbody>
+						<tr>
+							<td>Claude Sonnet 4.6</td>
+							<td>$3 / MTok</td>
+							<td>$15 / MTok</td>
+						</tr>
+					</tbody>
+				</table>
+			`,
+		);
+
+		expect(prices).toHaveLength(1);
+		expect(prices[0]).toMatchObject({
+			provider: "anthropic",
+			model_pattern: "claude-sonnet-4-6",
+			input_price_per_1m: 3,
+			output_price_per_1m: 15,
+			sync_status: "exact",
+		});
+	});
+
+	it("从 Anthropic 展示名正文估算 Claude 价格", () => {
+		const prices = parsePricingPage(
+			"anthropic",
+			"https://example.test/pricing",
+			"Claude Sonnet 4.6 Input $3 / MTok Output $15 / MTok",
+		);
+
+		expect(prices[0]).toMatchObject({
+			provider: "anthropic",
+			model_pattern: "claude-sonnet-4-6",
+			input_price_per_1m: 3,
+			output_price_per_1m: 15,
+			sync_status: "estimated",
+		});
+	});
+
 	it("从模型作为列的官方价格矩阵解析精确价", () => {
 		const prices = parsePricingPage(
 			"deepseek",
@@ -205,6 +255,41 @@ describe("pricing sync parser", () => {
 
 		expect(deletedProviders).toEqual([["official_sync", "deepseek"]]);
 		expect(insertedModels[0]).toContain("deepseek-v4-flash");
+	});
+
+	it("同步没有解析到价格时把该来源标记为失败", async () => {
+		const db = {
+			prepare() {
+				return {
+					bind() {
+						return {
+							async run() {
+								return { success: true };
+							},
+							async all() {
+								return { results: [{ name: "sync_status" }] };
+							},
+						};
+					},
+					async all() {
+						return { results: [{ name: "sync_status" }] };
+					},
+				};
+			},
+		};
+
+		const result = await syncModelPrices(db as never, {
+			sources: ["anthropic"],
+			fetcher: async () => new Response("<html>No prices here</html>", { status: 200 }),
+		});
+
+		expect(result.ok).toBe(false);
+		expect(result.items[0]).toMatchObject({
+			source: "anthropic",
+			ok: false,
+			count: 0,
+			message: "no_prices_found",
+		});
 	});
 
 	it("同步入库前按全局计价币种转换", async () => {
