@@ -68,44 +68,153 @@ SELECT DISTINCT
   NULL,
   CURRENT_TIMESTAMP,
   CURRENT_TIMESTAMP
-FROM (
-  SELECT canonical_model FROM usage_logs WHERE canonical_model IS NOT NULL AND TRIM(canonical_model) != ''
-  UNION
-  SELECT canonical_model FROM attempt_events WHERE canonical_model IS NOT NULL AND TRIM(canonical_model) != ''
-  UNION
-  SELECT canonical_model FROM model_prices WHERE canonical_model IS NOT NULL AND TRIM(canonical_model) != ''
-  UNION
-  SELECT canonical_model FROM channel_model_capabilities WHERE canonical_model IS NOT NULL AND TRIM(canonical_model) != ''
-);
+FROM usage_logs
+WHERE canonical_model IS NOT NULL AND TRIM(canonical_model) != '';
+
+INSERT OR IGNORE INTO model_registry (canonical_model, display_name, provider_hint, created_at, updated_at)
+SELECT DISTINCT
+  canonical_model,
+  canonical_model,
+  NULL,
+  CURRENT_TIMESTAMP,
+  CURRENT_TIMESTAMP
+FROM attempt_events
+WHERE canonical_model IS NOT NULL AND TRIM(canonical_model) != '';
+
+INSERT OR IGNORE INTO model_registry (canonical_model, display_name, provider_hint, created_at, updated_at)
+SELECT DISTINCT
+  canonical_model,
+  canonical_model,
+  NULL,
+  CURRENT_TIMESTAMP,
+  CURRENT_TIMESTAMP
+FROM model_prices
+WHERE canonical_model IS NOT NULL AND TRIM(canonical_model) != '';
+
+INSERT OR IGNORE INTO model_registry (canonical_model, display_name, provider_hint, created_at, updated_at)
+SELECT DISTINCT
+  canonical_model,
+  canonical_model,
+  NULL,
+  CURRENT_TIMESTAMP,
+  CURRENT_TIMESTAMP
+FROM channel_model_capabilities
+WHERE canonical_model IS NOT NULL AND TRIM(canonical_model) != '';
 
 INSERT OR IGNORE INTO model_aliases (alias, provider_hint, canonical_model, created_at, updated_at)
 SELECT DISTINCT
-  LOWER(TRIM(alias_value)) AS alias,
+  LOWER(TRIM(model)) AS alias,
   '' AS provider_hint,
   canonical_model,
   CURRENT_TIMESTAMP,
   CURRENT_TIMESTAMP
-FROM (
-  SELECT model AS alias_value, canonical_model FROM usage_logs
-  UNION
-  SELECT request_model_raw AS alias_value, canonical_model FROM usage_logs
-  UNION
-  SELECT upstream_model_raw AS alias_value, canonical_model FROM usage_logs
-  UNION
-  SELECT model AS alias_value, canonical_model FROM attempt_events
-  UNION
-  SELECT request_model_raw AS alias_value, canonical_model FROM attempt_events
-  UNION
-  SELECT upstream_model_raw AS alias_value, canonical_model FROM attempt_events
-  UNION
-  SELECT model_pattern AS alias_value, canonical_model FROM model_prices
-  UNION
-  SELECT model_name AS alias_value, canonical_model FROM model_prices
-  UNION
-  SELECT model AS alias_value, canonical_model FROM channel_model_capabilities
-)
-WHERE alias_value IS NOT NULL
-  AND TRIM(alias_value) != ''
+FROM usage_logs
+WHERE model IS NOT NULL
+  AND TRIM(model) != ''
+  AND canonical_model IS NOT NULL
+  AND TRIM(canonical_model) != '';
+
+INSERT OR IGNORE INTO model_aliases (alias, provider_hint, canonical_model, created_at, updated_at)
+SELECT DISTINCT
+  LOWER(TRIM(request_model_raw)) AS alias,
+  '' AS provider_hint,
+  canonical_model,
+  CURRENT_TIMESTAMP,
+  CURRENT_TIMESTAMP
+FROM usage_logs
+WHERE request_model_raw IS NOT NULL
+  AND TRIM(request_model_raw) != ''
+  AND canonical_model IS NOT NULL
+  AND TRIM(canonical_model) != '';
+
+INSERT OR IGNORE INTO model_aliases (alias, provider_hint, canonical_model, created_at, updated_at)
+SELECT DISTINCT
+  LOWER(TRIM(upstream_model_raw)) AS alias,
+  '' AS provider_hint,
+  canonical_model,
+  CURRENT_TIMESTAMP,
+  CURRENT_TIMESTAMP
+FROM usage_logs
+WHERE upstream_model_raw IS NOT NULL
+  AND TRIM(upstream_model_raw) != ''
+  AND canonical_model IS NOT NULL
+  AND TRIM(canonical_model) != '';
+
+INSERT OR IGNORE INTO model_aliases (alias, provider_hint, canonical_model, created_at, updated_at)
+SELECT DISTINCT
+  LOWER(TRIM(model)) AS alias,
+  '' AS provider_hint,
+  canonical_model,
+  CURRENT_TIMESTAMP,
+  CURRENT_TIMESTAMP
+FROM attempt_events
+WHERE model IS NOT NULL
+  AND TRIM(model) != ''
+  AND canonical_model IS NOT NULL
+  AND TRIM(canonical_model) != '';
+
+INSERT OR IGNORE INTO model_aliases (alias, provider_hint, canonical_model, created_at, updated_at)
+SELECT DISTINCT
+  LOWER(TRIM(request_model_raw)) AS alias,
+  '' AS provider_hint,
+  canonical_model,
+  CURRENT_TIMESTAMP,
+  CURRENT_TIMESTAMP
+FROM attempt_events
+WHERE request_model_raw IS NOT NULL
+  AND TRIM(request_model_raw) != ''
+  AND canonical_model IS NOT NULL
+  AND TRIM(canonical_model) != '';
+
+INSERT OR IGNORE INTO model_aliases (alias, provider_hint, canonical_model, created_at, updated_at)
+SELECT DISTINCT
+  LOWER(TRIM(upstream_model_raw)) AS alias,
+  '' AS provider_hint,
+  canonical_model,
+  CURRENT_TIMESTAMP,
+  CURRENT_TIMESTAMP
+FROM attempt_events
+WHERE upstream_model_raw IS NOT NULL
+  AND TRIM(upstream_model_raw) != ''
+  AND canonical_model IS NOT NULL
+  AND TRIM(canonical_model) != '';
+
+INSERT OR IGNORE INTO model_aliases (alias, provider_hint, canonical_model, created_at, updated_at)
+SELECT DISTINCT
+  LOWER(TRIM(model_pattern)) AS alias,
+  '' AS provider_hint,
+  canonical_model,
+  CURRENT_TIMESTAMP,
+  CURRENT_TIMESTAMP
+FROM model_prices
+WHERE model_pattern IS NOT NULL
+  AND TRIM(model_pattern) != ''
+  AND canonical_model IS NOT NULL
+  AND TRIM(canonical_model) != '';
+
+INSERT OR IGNORE INTO model_aliases (alias, provider_hint, canonical_model, created_at, updated_at)
+SELECT DISTINCT
+  LOWER(TRIM(model_name)) AS alias,
+  '' AS provider_hint,
+  canonical_model,
+  CURRENT_TIMESTAMP,
+  CURRENT_TIMESTAMP
+FROM model_prices
+WHERE model_name IS NOT NULL
+  AND TRIM(model_name) != ''
+  AND canonical_model IS NOT NULL
+  AND TRIM(canonical_model) != '';
+
+INSERT OR IGNORE INTO model_aliases (alias, provider_hint, canonical_model, created_at, updated_at)
+SELECT DISTINCT
+  LOWER(TRIM(model)) AS alias,
+  '' AS provider_hint,
+  canonical_model,
+  CURRENT_TIMESTAMP,
+  CURRENT_TIMESTAMP
+FROM channel_model_capabilities
+WHERE model IS NOT NULL
+  AND TRIM(model) != ''
   AND canonical_model IS NOT NULL
   AND TRIM(canonical_model) != '';
 
