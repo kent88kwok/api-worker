@@ -95,6 +95,7 @@ import { LoginView } from "./features/LoginView";
 import { ModelsView } from "./features/ModelsView";
 import { PricingView } from "./features/PricingView";
 import { getCurrencyDisplayLabel } from "./features/pricing-display";
+import { didPricingDisplayConfigChange } from "./features/pricing-sync";
 import { isRequestEntryFormatAllowedForSiteType } from "./features/request-entry-formats";
 import { SettingsView } from "./features/SettingsView";
 import { shouldVerifyAfterSiteSubmit } from "./features/site-model-display";
@@ -852,7 +853,7 @@ const App = () => {
 		}
 		startAction(actionKey);
 		try {
-			await loadDashboard();
+			await Promise.all([loadSettings(), loadDashboard()]);
 			pushNotice("success", "数据已刷新");
 		} catch (error) {
 			await loadSites().catch(() => undefined);
@@ -892,7 +893,7 @@ const App = () => {
 			const nextQuery = override ?? dashboardQuery;
 			startAction(actionKey);
 			try {
-				await loadDashboard(nextQuery);
+				await Promise.all([loadSettings(), loadDashboard(nextQuery)]);
 				pushNotice("success", "筛选已更新");
 			} catch (error) {
 				pushNotice("error", (error as Error).message);
@@ -1038,6 +1039,10 @@ const App = () => {
 		await Promise.all([loadSettings(), loadPricingModels()]);
 	}, [loadPricingModels, loadSettings]);
 
+	const refreshPricingDisplayData = useCallback(async () => {
+		await Promise.all([loadPricingContext(), loadDashboard(), loadUsage()]);
+	}, [loadDashboard, loadPricingContext, loadUsage]);
+
 	const pricingCurrency =
 		data.settings?.pricing_settings?.currency ?? settingsForm.pricing_currency;
 	const pricingUsdCnyRate =
@@ -1073,7 +1078,12 @@ const App = () => {
 			dismissNotice();
 			try {
 				if (tabId === "dashboard") {
-					await Promise.all([loadDashboard(), loadSites(), loadTokens()]);
+					await Promise.all([
+						loadSettings(),
+						loadDashboard(),
+						loadSites(),
+						loadTokens(),
+					]);
 				}
 				if (tabId === "channels") {
 					await Promise.all([loadSites(), loadModels()]);
@@ -1092,6 +1102,7 @@ const App = () => {
 				}
 				if (tabId === "usage") {
 					await Promise.all([
+						loadSettings(),
 						loadUsage(),
 						loadSites(),
 						loadTokens(),
@@ -1312,14 +1323,22 @@ const App = () => {
 			startAction(actionKey);
 			setUsagePage(next);
 			try {
-				await loadUsage({ page: next });
+				await Promise.all([loadSettings(), loadUsage({ page: next })]);
 			} catch (error) {
 				pushNotice("error", (error as Error).message);
 			} finally {
 				endAction(actionKey);
 			}
 		},
-		[endAction, isActionPending, loadUsage, pushNotice, startAction, usagePage],
+		[
+			endAction,
+			isActionPending,
+			loadSettings,
+			loadUsage,
+			pushNotice,
+			startAction,
+			usagePage,
+		],
 	);
 
 	const handleUsagePageSizeChange = useCallback(
@@ -1333,14 +1352,24 @@ const App = () => {
 			setUsagePageSize(next);
 			setUsagePage(1);
 			try {
-				await loadUsage({ page: 1, pageSize: next });
+				await Promise.all([
+					loadSettings(),
+					loadUsage({ page: 1, pageSize: next }),
+				]);
 			} catch (error) {
 				pushNotice("error", (error as Error).message);
 			} finally {
 				endAction(actionKey);
 			}
 		},
-		[endAction, isActionPending, loadUsage, pushNotice, startAction],
+		[
+			endAction,
+			isActionPending,
+			loadSettings,
+			loadUsage,
+			pushNotice,
+			startAction,
+		],
 	);
 
 	const handleUsageFiltersChange = useCallback((patch: Partial<UsageQuery>) => {
@@ -1365,7 +1394,10 @@ const App = () => {
 		setUsagePage(1);
 		setUsageFilters(nextQuery);
 		try {
-			await loadUsage({ page: 1, query: nextQuery });
+			await Promise.all([
+				loadSettings(),
+				loadUsage({ page: 1, query: nextQuery }),
+			]);
 		} catch (error) {
 			await loadSites().catch(() => undefined);
 			pushNotice("error", (error as Error).message);
@@ -1375,6 +1407,7 @@ const App = () => {
 	}, [
 		endAction,
 		isActionPending,
+		loadSettings,
 		loadUsage,
 		pushNotice,
 		startAction,
@@ -1396,14 +1429,24 @@ const App = () => {
 		setUsageQuery(initialUsageQuery);
 		setUsagePage(1);
 		try {
-			await loadUsage({ page: 1, query: initialUsageQuery });
+			await Promise.all([
+				loadSettings(),
+				loadUsage({ page: 1, query: initialUsageQuery }),
+			]);
 		} catch (error) {
 			await loadSites().catch(() => undefined);
 			pushNotice("error", (error as Error).message);
 		} finally {
 			endAction(actionKey);
 		}
-	}, [endAction, isActionPending, loadUsage, pushNotice, startAction]);
+	}, [
+		endAction,
+		isActionPending,
+		loadSettings,
+		loadUsage,
+		pushNotice,
+		startAction,
+	]);
 
 	const handleTabChange = useCallback(
 		(tabId: TabId) => {
@@ -2221,6 +2264,10 @@ const App = () => {
 			const backupChanged =
 				JSON.stringify(pickEditableBackupSettings(backupSettings)) !==
 				JSON.stringify(backupSettingsSnapshot);
+			const pricingDisplayChanged = didPricingDisplayConfigChange(
+				settingsForm,
+				settingsFormSnapshot,
+			);
 			if (!settingsChanged && !backupChanged) {
 				return;
 			}
@@ -2298,11 +2345,15 @@ const App = () => {
 						body: JSON.stringify(payload),
 					});
 				}
-				await Promise.all([
-					loadSettings(),
-					loadRetryErrorCodes(),
-					loadBackupSettings(),
-				]);
+				await Promise.all(
+					pricingDisplayChanged
+						? [
+								refreshPricingDisplayData(),
+								loadRetryErrorCodes(),
+								loadBackupSettings(),
+							]
+						: [loadSettings(), loadRetryErrorCodes(), loadBackupSettings()],
+				);
 				setSettingsForm((prev) => ({ ...prev, admin_password: "" }));
 				pushNotice("success", "设置已更新");
 			} catch (error) {
@@ -2320,6 +2371,7 @@ const App = () => {
 			loadRetryErrorCodes,
 			loadSettings,
 			pushNotice,
+			refreshPricingDisplayData,
 			settingsForm,
 			settingsFormSnapshot,
 			startAction,
@@ -3197,7 +3249,7 @@ const App = () => {
 						pricing_currency: currency,
 					}),
 				});
-				await loadPricingContext();
+				await refreshPricingDisplayData();
 				pushNotice(
 					"success",
 					`价格货币已切换为 ${getCurrencyDisplayLabel(currency)}`,
@@ -3211,8 +3263,8 @@ const App = () => {
 		[
 			apiFetch,
 			endAction,
+			refreshPricingDisplayData,
 			isActionPending,
-			loadPricingContext,
 			pricingCurrency,
 			pushNotice,
 			startAction,
@@ -3469,14 +3521,21 @@ const App = () => {
 		}
 		startAction(actionKey);
 		try {
-			await loadUsage();
+			await Promise.all([loadSettings(), loadUsage()]);
 			pushNotice("success", "日志已刷新");
 		} catch (error) {
 			pushNotice("error", (error as Error).message);
 		} finally {
 			endAction(actionKey);
 		}
-	}, [endAction, isActionPending, loadUsage, pushNotice, startAction]);
+	}, [
+		endAction,
+		isActionPending,
+		loadSettings,
+		loadUsage,
+		pushNotice,
+		startAction,
+	]);
 
 	const filteredSites = useMemo(
 		() => filterSites(data.sites, siteSearch),
