@@ -6,4 +6,5 @@ export const newApiUpstreamDescriptor: UpstreamDescriptor = {
 	defaultProvider: "openai",
 	supportsCheckin: true,
 	supportsSystemCredentials: true,
+	supportedRequestEntryFormats: ["openai_chat", "openai_responses"],
 };

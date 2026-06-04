@@ -103,6 +103,7 @@ export const initialSettingsForm: SettingsForm = {
 	site_task_concurrency: "4",
 	site_task_timeout_ms: "12000",
 	site_task_fallback_enabled: true,
+	site_verification_model_limit: "3",
 	pricing_sync_enabled: false,
 	pricing_sync_schedule_time: "04:40",
 	pricing_sync_sources: [

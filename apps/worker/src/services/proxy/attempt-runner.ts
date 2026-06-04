@@ -144,6 +144,7 @@ export async function runProxyAttempts(ctx: any): Promise<any> {
 		for (const item of attemptPlan) {
 			const channel = item.channel;
 			const attemptModel = item.model;
+			const attemptRequestEntryFormat = item.requestEntryFormat ?? null;
 			const attemptStart = Date.now();
 			const attemptStartedAt = new Date(attemptStart).toISOString();
 			const attemptTarget = resolveChannelAttemptTarget({
@@ -163,6 +164,7 @@ export async function runProxyAttempts(ctx: any): Promise<any> {
 				attemptTarget,
 				upstreamModelOverride: attemptModel ?? attemptTarget.upstreamModel,
 				recordModelOverride: attemptModel ?? attemptTarget.recordModel,
+				requestEntryFormatOverride: attemptRequestEntryFormat,
 				requestHeaders: new Headers(c.req.header()),
 				targetPath,
 				effectiveRequestText,
@@ -835,6 +837,7 @@ export async function runProxyAttempts(ctx: any): Promise<any> {
 		for (const [attemptIndex, item] of attemptPlan.entries()) {
 			const channel = item.channel;
 			const attemptModel = item.model;
+			const attemptRequestEntryFormat = item.requestEntryFormat ?? null;
 			if (downstreamSignal?.aborted === true) {
 				return done(downstreamAbortResponse());
 			}
@@ -866,6 +869,7 @@ export async function runProxyAttempts(ctx: any): Promise<any> {
 				attemptTarget,
 				upstreamModelOverride: attemptModel ?? attemptTarget.upstreamModel,
 				recordModelOverride: attemptModel ?? attemptTarget.recordModel,
+				requestEntryFormatOverride: attemptRequestEntryFormat,
 				requestHeaders: new Headers(c.req.header()),
 				targetPath,
 				effectiveRequestText,

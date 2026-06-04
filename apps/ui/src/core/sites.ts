@@ -1,4 +1,5 @@
 import {
+	getRequestEntryFormatLabel as getSharedRequestEntryFormatLabel,
 	getSiteTypeLabel,
 	supportsSiteCheckin,
 } from "../../../shared-core/src";
@@ -356,19 +357,7 @@ export const getSiteCheckinLabel = (site: Site, today?: string) => {
 };
 
 const getRequestEntryFormatLabel = (format: Site["request_entry_format"]) => {
-	if (format === "openai_chat") {
-		return "OpenAI Chat";
-	}
-	if (format === "openai_responses") {
-		return "OpenAI Responses";
-	}
-	if (format === "anthropic_messages") {
-		return "Anthropic Messages";
-	}
-	if (format === "gemini_generate_content") {
-		return "Gemini Generate Content";
-	}
-	return "自动";
+	return format ? getSharedRequestEntryFormatLabel(format) : "自动";
 };
 
 export const formatSiteRequestEntrySummary = (site: Site) => {

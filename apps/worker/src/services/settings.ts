@@ -52,6 +52,7 @@ const DEFAULT_PROXY_LARGE_REQUEST_OFFLOAD_THRESHOLD_BYTES = 32768;
 const DEFAULT_SITE_TASK_CONCURRENCY = 4;
 const DEFAULT_SITE_TASK_TIMEOUT_MS = 12000;
 const DEFAULT_SITE_TASK_FALLBACK_ENABLED = true;
+export const DEFAULT_SITE_VERIFICATION_MODEL_LIMIT = 3;
 const DEFAULT_ATTEMPT_LOG_ENABLED = true;
 const DEFAULT_ATTEMPT_LOG_RETENTION_DAYS = 30;
 const DEFAULT_BACKUP_ENABLED = false;
@@ -122,6 +123,7 @@ const PROXY_LARGE_REQUEST_OFFLOAD_THRESHOLD_BYTES_KEY =
 const SITE_TASK_CONCURRENCY_KEY = "site_task_concurrency";
 const SITE_TASK_TIMEOUT_MS_KEY = "site_task_timeout_ms";
 const SITE_TASK_FALLBACK_ENABLED_KEY = "site_task_fallback_enabled";
+const SITE_VERIFICATION_MODEL_LIMIT_KEY = "site_verification_model_limit";
 const ATTEMPT_LOG_ENABLED_KEY = "attempt_log_enabled";
 const ATTEMPT_LOG_RETENTION_DAYS_KEY = "attempt_log_retention_days";
 const BACKUP_ENABLED_KEY = "backup_enabled";
@@ -171,6 +173,7 @@ const RUNTIME_SETTING_KEYS = [
 	SITE_TASK_CONCURRENCY_KEY,
 	SITE_TASK_TIMEOUT_MS_KEY,
 	SITE_TASK_FALLBACK_ENABLED_KEY,
+	SITE_VERIFICATION_MODEL_LIMIT_KEY,
 	ATTEMPT_LOG_ENABLED_KEY,
 	ATTEMPT_LOG_RETENTION_DAYS_KEY,
 ] as const;
@@ -232,6 +235,7 @@ export type RuntimeProxyConfig = {
 	site_task_concurrency: number;
 	site_task_timeout_ms: number;
 	site_task_fallback_enabled: boolean;
+	verification_model_limit: number;
 	attempt_log_enabled: boolean;
 	attempt_log_retention_days: number;
 	attempt_worker_bound: boolean;
@@ -265,6 +269,7 @@ export type ProxyRuntimeSettings = {
 	site_task_concurrency: number;
 	site_task_timeout_ms: number;
 	site_task_fallback_enabled: boolean;
+	verification_model_limit: number;
 	attempt_log_enabled: boolean;
 	attempt_log_retention_days: number;
 };
@@ -620,6 +625,10 @@ export async function getProxyRuntimeSettings(
 			settings[SITE_TASK_FALLBACK_ENABLED_KEY] ?? null,
 			DEFAULT_SITE_TASK_FALLBACK_ENABLED,
 		),
+		verification_model_limit: parsePositiveSetting(
+			settings[SITE_VERIFICATION_MODEL_LIMIT_KEY] ?? null,
+			DEFAULT_SITE_VERIFICATION_MODEL_LIMIT,
+		),
 		attempt_log_enabled: parseBooleanSetting(
 			settings[ATTEMPT_LOG_ENABLED_KEY] ?? null,
 			DEFAULT_ATTEMPT_LOG_ENABLED,
@@ -885,6 +894,15 @@ export async function setProxyRuntimeSettings(
 				db,
 				SITE_TASK_FALLBACK_ENABLED_KEY,
 				update.site_task_fallback_enabled ? "1" : "0",
+			),
+		);
+	}
+	if (update.verification_model_limit !== undefined) {
+		tasks.push(
+			upsertSetting(
+				db,
+				SITE_VERIFICATION_MODEL_LIMIT_KEY,
+				String(Math.max(1, Math.floor(update.verification_model_limit))),
 			),
 		);
 	}
@@ -1309,9 +1327,7 @@ export async function setPricingSettings(
 			upsertSetting(
 				db,
 				PRICING_LAST_SYNC_RESULT_KEY,
-				update.last_sync_result
-					? JSON.stringify(update.last_sync_result)
-					: "",
+				update.last_sync_result ? JSON.stringify(update.last_sync_result) : "",
 			),
 		);
 	}

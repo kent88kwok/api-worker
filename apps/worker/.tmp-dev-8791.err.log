@@ -1,0 +1,18 @@
+[31mX [41;31m[[41;97mERROR[41;31m][0m [1mBuild failed with 1 error:[0m
+
+  [31mX [41;31m[[41;97mERROR[41;31m][0m [1mNo matching export in "src/services/site-verification-selection.ts" for import "resolveVerificationRequestModel"[0m
+  
+      src/services/site-verification.ts:23:1:
+  [37m      23 │   [32mresolveVerificationRequestModel[37m,
+           │   [32m~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[37m
+           ╵   [32mresolveVerificationRequestModels[0m
+  
+    Did you mean to import "resolveVerificationRequestModels" instead?
+  
+      src/services/site-verification-selection.ts:126:16:
+  [37m      126 │ export function [32mresolveVerificationRequestModels[37m(options: {
+            ╵                 [32m~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+  
+  
+
+

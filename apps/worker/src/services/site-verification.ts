@@ -17,9 +17,24 @@ import {
 } from "./channel-testing";
 import type { ChannelRow } from "./channel-types";
 import {
+	buildVerificationModelAttemptOrder,
 	collectCandidateModels,
 	mergeVerificationTokenModels,
+	resolveVerificationRequestModels,
 } from "./site-verification-selection";
+import {
+	buildRequestEntryFormatAttemptOrder,
+	resolveEndpointTypeForRequestEntryFormat,
+	resolveUpstreamProviderForRequestEntryFormat,
+} from "./request-entry-attempts";
+import {
+	buildProxyErrorCodeSet,
+	resolveProxyErrorDecision,
+} from "./proxy-error-policy";
+import {
+	DEFAULT_SITE_VERIFICATION_MODEL_LIMIT,
+	type ProxyRuntimeSettings,
+} from "./settings";
 import { normalizeChatRequest } from "./provider-transform";
 import { getProviderAdapter } from "./providers";
 import { buildProviderChatRequest } from "./providers/chat-request";
@@ -123,6 +138,14 @@ type VerificationMetadataShape = {
 const MINIMAL_PROBE_PROMPT = "Reply with OK.";
 const MINIMAL_PROBE_MAX_TOKENS = 8;
 const VERIFICATION_ERROR_DETAIL_MAX_LENGTH = 180;
+
+type VerificationRuntimeSettings = Pick<
+	ProxyRuntimeSettings,
+	| "retry_sleep_error_codes"
+	| "retry_return_error_codes"
+	| "channel_disable_error_codes"
+	| "verification_model_limit"
+>;
 
 const defaultConnectivityResult = (): VerificationStageResult => ({
 	status: "skip",
@@ -384,6 +407,7 @@ export async function verifySiteChannel(options: {
 	tokens: VerificationToken[];
 	mode?: VerificationMode;
 	fetcher?: typeof fetch;
+	runtimeSettings?: Partial<VerificationRuntimeSettings>;
 }): Promise<SiteVerificationResult> {
 	const fetcher = options.fetcher ?? fetch;
 	const channel = options.channel;
@@ -402,10 +426,50 @@ export async function verifySiteChannel(options: {
 	let discoveredModels: string[] = [];
 	let tokenResults: ChannelTokenTestItem[] = [];
 	let selectedModel: string | null = null;
+	let selectedRequestModel: string | null = null;
 	let selectedToken: VerificationToken | null = null;
 	let tokenSummary: SiteVerificationResult["token_summary"] = null;
 	let trace: SiteVerificationResult["trace"] = {};
 	let verifiedTokens = tokens;
+	const verificationRuntime: VerificationRuntimeSettings = {
+		retry_sleep_error_codes:
+			options.runtimeSettings?.retry_sleep_error_codes ?? [],
+		retry_return_error_codes:
+			options.runtimeSettings?.retry_return_error_codes ?? [],
+		channel_disable_error_codes:
+			options.runtimeSettings?.channel_disable_error_codes ?? [],
+		verification_model_limit: Math.max(
+			1,
+			Math.floor(
+				Number(
+					options.runtimeSettings?.verification_model_limit ??
+						DEFAULT_SITE_VERIFICATION_MODEL_LIMIT,
+				),
+			),
+		),
+	};
+	const verificationFailurePolicy = {
+		sleepErrorCodeSet: buildProxyErrorCodeSet(
+			verificationRuntime.retry_sleep_error_codes,
+		),
+		returnErrorCodeSet: buildProxyErrorCodeSet(
+			verificationRuntime.retry_return_error_codes,
+		),
+		disableErrorCodeSet: buildProxyErrorCodeSet(
+			verificationRuntime.channel_disable_error_codes,
+		),
+	};
+	const shouldContinueAfterFailure = (
+		errorCode: string | null,
+		errorMessage: string | null,
+	): boolean => {
+		const action = resolveProxyErrorDecision(
+			verificationFailurePolicy,
+			errorCode,
+			errorMessage,
+		).action;
+		return action === "retry" || action === "sleep";
+	};
 
 	if (tokens.length === 0) {
 		connectivity.status = "fail";
@@ -559,13 +623,13 @@ export async function verifySiteChannel(options: {
 				: `${capability.message} 当前选择模型 ${selectedModel}。`;
 	}
 
-	const tokenSelection = selectTokenForModel(
+	const initialTokenSelection = selectTokenForModel(
 		verifiedTokens,
 		selectedModel,
 		null,
 		Math.floor(Math.random() * Math.max(1, verifiedTokens.length)),
 	);
-	selectedToken = tokenSelection.token;
+	selectedToken = initialTokenSelection.token;
 	if (!selectedToken) {
 		connectivity.status = "fail";
 		connectivity.code = "no_matching_call_token";
@@ -662,147 +726,204 @@ export async function verifySiteChannel(options: {
 		};
 	}
 
-	const request = buildProviderChatRequest(
-		provider,
-		normalized,
+	for (const candidateModel of buildVerificationModelAttemptOrder(
 		selectedModel,
-		"chat",
-		false,
-		metadata.endpoint_overrides,
-	);
-	if (!request) {
-		service.status = "fail";
-		service.code = "service_request_build_failed";
-		service.message = "当前站点类型暂不支持生成统一验证请求。";
-		if (channel.status === "disabled") {
-			recovery.status = "fail";
-			recovery.code = "service_request_build_failed";
-			recovery.message = "当前站点类型暂不支持恢复验证。";
+		modelSelection.all,
+		verificationRuntime.verification_model_limit,
+	)) {
+		let stopVerification = false;
+		const tokenSelection = selectTokenForModel(
+			verifiedTokens,
+			candidateModel,
+			null,
+			Math.floor(Math.random() * Math.max(1, verifiedTokens.length)),
+		);
+		if (!tokenSelection.token) {
+			continue;
 		}
-		const summarized = summarizeVerdict(channel.status, {
-			connectivity,
-			capability,
-			service,
-			recovery,
+		selectedModel = candidateModel;
+		selectedRequestModel = null;
+		selectedToken = tokenSelection.token;
+		const requestModels = resolveVerificationRequestModels({
+			model: selectedModel,
+			tokenModelsJson: selectedToken.models_json ?? null,
+			channelModelsJson: channel.models_json ?? null,
 		});
-		return {
-			site_id: channel.id,
-			site_name: channel.name,
-			mode,
-			verdict: summarized.verdict,
-			message: summarized.message,
-			suggested_action: deriveSuggestedAction({
-				connectivity,
-				capability,
-				service,
-				recovery,
-			}),
-			stages: { connectivity, capability, service, recovery },
-			selected_model: selectedModel,
-			selected_token: {
-				id: selectedToken.id,
-				name: selectedToken.name,
-			},
-			discovered_models: modelSelection.all,
-			token_results: tokenResults,
-			token_summary: tokenSummary,
-			trace,
-			checked_at: checkedAt,
-		};
-	}
-
-	const targetPath = applyQueryOverrides(
-		request.path,
-		metadata.query_overrides,
-	);
-	const target = request.absoluteUrl
-		? applyQueryOverrides(request.absoluteUrl, metadata.query_overrides)
-		: `${normalizeBaseUrl(channel.base_url)}${targetPath}`;
-	const headers = providerAdapter.buildAuthHeaders(
-		new Headers(),
-		selectedToken.api_key,
-		metadata.header_overrides,
-	);
-	ensureJsonContentType(headers);
-	const startedAt = Date.now();
-	try {
-		const response = await fetcher(target, {
-			method: "POST",
-			headers,
-			body: JSON.stringify(request.body),
-		});
-		const successInspection = response.ok
-			? await inspectSuccessfulResponse(response, {
-					expectedProvider: provider,
-				})
-			: null;
-		const detail = response.ok
-			? (successInspection?.message ?? "service_request_succeeded")
-			: await readVerificationFailureDetail(response);
-		trace = {
-			latency_ms: Date.now() - startedAt,
-			upstream_status: response.status,
-			detail_code: response.ok
-				? (successInspection?.code ?? "service_request_succeeded")
-				: undefined,
-			detail_message: response.ok
-				? (successInspection?.message ?? "service_request_succeeded")
-				: (summarizeVerificationDetail(
-						[`HTTP ${response.status}`, detail, `POST ${targetPath}`]
-							.filter(Boolean)
-							.join(" | "),
-					) ?? `HTTP ${response.status}`),
-		};
-		if (response.status === 401 || response.status === 403) {
-			connectivity.status = "fail";
-			connectivity.code = "auth_failed";
-			connectivity.message = "调用令牌校验失败，请检查站点或调用令牌。";
+		if (requestModels.length === 0) {
 			service.status = "fail";
-			service.code = "auth_failed";
-			service.message = "真实服务验证被上游鉴权拒绝。";
-		} else if (!response.ok) {
-			const failure = classifyServiceFailure({
-				status: response.status,
-				detail,
-			});
-			connectivity.status = "pass";
-			connectivity.code = "reachable";
-			connectivity.message = "站点可达，但服务验证返回错误。";
-			service.status = failure.status;
-			service.code = failure.code;
-			service.message = failure.message;
-			trace.detail_code = failure.code;
-		} else if (!successInspection?.ok) {
-			connectivity.status = "pass";
-			connectivity.code = "reachable";
-			connectivity.message = "站点可达，但成功响应内容不符合真实服务返回特征。";
-			service.status = "fail";
-			service.code = successInspection?.code ?? "abnormal_success_response";
+			service.code = "verification_model_not_supported";
 			service.message =
-				successInspection?.code === "html_success_page"
-					? "上游返回了 HTML 页面，当前站点更像是关停页或落地页，而非真实 API。"
-					: "站点返回了异常的 200 成功响应，未通过真实服务验证。";
-			trace.detail_code = service.code;
-		} else {
-			connectivity.status = "pass";
-			connectivity.code = "reachable";
-			connectivity.message = "站点地址、鉴权与最小请求链路均可达。";
-			service.status = "pass";
-			service.code = "service_request_succeeded";
-			service.message = "真实服务验证通过，站点当前可被系统正常使用。";
+				"当前候选模型缺少可用的上游原始模型名，无法构造真实服务验证请求。";
+			stopVerification = !shouldContinueAfterFailure(
+				service.code,
+				service.message,
+			);
+			if (stopVerification) {
+				break;
+			}
+			continue;
 		}
-	} catch (error) {
-		trace = {
-			latency_ms: Date.now() - startedAt,
-			detail_code: "network_error",
-			detail_message: (error as Error).message || "network_error",
-		};
-		connectivity.status = "fail";
-		connectivity.code = "network_error";
-		connectivity.message = "无法连接到站点，请检查地址、网络或 TLS 配置。";
-		service.status = "fail";
-		service.code = "network_error";
-		service.message = "真实服务验证未能连接到上游。";
+		for (const requestModel of requestModels) {
+			for (const requestFormat of buildRequestEntryFormatAttemptOrder({
+				siteType: metadata.site_type,
+				entry: metadata.request_entry,
+				endpointType: "chat",
+			})) {
+				const requestProvider = resolveUpstreamProviderForRequestEntryFormat(
+					requestFormat,
+					provider,
+				);
+				selectedRequestModel = requestModel;
+				const request = buildProviderChatRequest(
+					requestProvider,
+					normalized,
+					requestModel,
+					resolveEndpointTypeForRequestEntryFormat(requestFormat, "chat"),
+					false,
+					metadata.endpoint_overrides,
+				);
+				if (!request) {
+					service.status = "fail";
+					service.code = "service_request_build_failed";
+					service.message = "当前站点类型暂不支持生成统一验证请求。";
+					stopVerification = !shouldContinueAfterFailure(
+						service.code,
+						service.message,
+					);
+					if (stopVerification) {
+						break;
+					}
+					continue;
+				}
+
+				const targetPath = applyQueryOverrides(
+					request.path,
+					metadata.query_overrides,
+				);
+				const target = request.absoluteUrl
+					? applyQueryOverrides(request.absoluteUrl, metadata.query_overrides)
+					: `${normalizeBaseUrl(channel.base_url)}${targetPath}`;
+				const requestProviderAdapter = getProviderAdapter(requestProvider);
+				const headers = requestProviderAdapter.buildAuthHeaders(
+					new Headers(),
+					selectedToken.api_key,
+					metadata.header_overrides,
+				);
+				ensureJsonContentType(headers);
+				const startedAt = Date.now();
+				try {
+					const response = await fetcher(target, {
+						method: "POST",
+						headers,
+						body: JSON.stringify(request.body),
+					});
+					const successInspection = response.ok
+						? await inspectSuccessfulResponse(response, {
+								expectedProvider: requestProvider,
+							})
+						: null;
+					const detail = response.ok
+						? (successInspection?.message ?? "service_request_succeeded")
+						: await readVerificationFailureDetail(response);
+					trace = {
+						latency_ms: Date.now() - startedAt,
+						upstream_status: response.status,
+						detail_code: response.ok
+							? (successInspection?.code ?? "service_request_succeeded")
+							: undefined,
+						detail_message: response.ok
+							? (successInspection?.message ?? "service_request_succeeded")
+							: (summarizeVerificationDetail(
+									[`HTTP ${response.status}`, detail, `POST ${targetPath}`]
+										.filter(Boolean)
+										.join(" | "),
+								) ?? `HTTP ${response.status}`),
+					};
+					if (response.status === 401 || response.status === 403) {
+						connectivity.status = "fail";
+						connectivity.code = "auth_failed";
+						connectivity.message = "调用令牌校验失败，请检查站点或调用令牌。";
+						service.status = "fail";
+						service.code = "auth_failed";
+						service.message = "真实服务验证被上游鉴权拒绝。";
+						if (!shouldContinueAfterFailure(service.code, service.message)) {
+							stopVerification = true;
+							break;
+						}
+						continue;
+					}
+					if (!response.ok) {
+						const failure = classifyServiceFailure({
+							status: response.status,
+							detail,
+						});
+						connectivity.status = "pass";
+						connectivity.code = "reachable";
+						connectivity.message = "站点可达，但服务验证返回错误。";
+						service.status = failure.status;
+						service.code = failure.code;
+						service.message = failure.message;
+						trace.detail_code = failure.code;
+						if (!shouldContinueAfterFailure(service.code, service.message)) {
+							stopVerification = true;
+							break;
+						}
+						continue;
+					}
+					if (!successInspection?.ok) {
+						connectivity.status = "pass";
+						connectivity.code = "reachable";
+						connectivity.message =
+							"站点可达，但成功响应内容不符合真实服务返回特征。";
+						service.status = "fail";
+						service.code =
+							successInspection?.code ?? "abnormal_success_response";
+						service.message =
+							successInspection?.code === "html_success_page"
+								? "上游返回了 HTML 页面，当前站点更像是关停页或落地页，而非真实 API。"
+								: "站点返回了异常的 200 成功响应，未通过真实服务验证。";
+						trace.detail_code = service.code;
+						if (!shouldContinueAfterFailure(service.code, service.message)) {
+							stopVerification = true;
+							break;
+						}
+						continue;
+					}
+
+					connectivity.status = "pass";
+					connectivity.code = "reachable";
+					connectivity.message = "站点地址、鉴权与最小请求链路均可达。";
+					service.status = "pass";
+					service.code = "service_request_succeeded";
+					service.message = "真实服务验证通过，站点当前可被系统正常使用。";
+					break;
+				} catch (error) {
+					trace = {
+						latency_ms: Date.now() - startedAt,
+						detail_code: "network_error",
+						detail_message: (error as Error).message || "network_error",
+					};
+					connectivity.status = "fail";
+					connectivity.code = "network_error";
+					connectivity.message =
+						"无法连接到站点，请检查地址、网络或 TLS 配置。";
+					service.status = "fail";
+					service.code = "network_error";
+					service.message = "真实服务验证未能连接到上游。";
+					if (!shouldContinueAfterFailure(service.code, service.message)) {
+						stopVerification = true;
+						break;
+					}
+					continue;
+				}
+			}
+			if (service.status === "pass" || stopVerification) {
+				break;
+			}
+		}
+		if (service.status === "pass" || stopVerification) {
+			break;
+		}
 	}
 
 	if (channel.status === "disabled") {
@@ -836,7 +957,7 @@ export async function verifySiteChannel(options: {
 			recovery,
 		}),
 		stages: { connectivity, capability, service, recovery },
-		selected_model: selectedModel,
+		selected_model: selectedRequestModel ?? selectedModel,
 		selected_token: {
 			id: selectedToken.id,
 			name: selectedToken.name,

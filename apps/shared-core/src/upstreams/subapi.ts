@@ -6,4 +6,10 @@ export const subApiUpstreamDescriptor: UpstreamDescriptor = {
 	defaultProvider: "openai",
 	supportsCheckin: false,
 	supportsSystemCredentials: true,
+	supportedRequestEntryFormats: [
+		"openai_chat",
+		"openai_responses",
+		"anthropic_messages",
+		"gemini_generate_content",
+	],
 };

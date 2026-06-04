@@ -1,52 +1,20 @@
+import {
+	canRequestEntryFormatHandleDownstream,
+	getRequestEntryFormatDefaultPath,
+	isRequestEntryEndpointType,
+	resolveRequestEntryFormatUpstreamProvider,
+} from "../../../../shared-core/src";
 import type { EndpointType, ProviderType } from "../provider-transform";
+import { buildRequestEntryFormatAttemptOrder } from "../request-entry-attempts";
+import type { SiteType } from "../site-metadata";
 import type { RequestEntry, RequestEntryFormat } from "../site-metadata";
 
-function resolveAutomaticRequestEntryFormat(options: {
+export function applyCustomRequestEntry(options: {
+	siteType: SiteType;
+	entry?: RequestEntry | null;
 	downstreamProvider: ProviderType;
 	endpointType: EndpointType;
-}): RequestEntryFormat | null {
-	if (options.downstreamProvider === "openai") {
-		if (options.endpointType === "responses") {
-			return "openai_responses";
-		}
-		if (options.endpointType === "chat") {
-			return "openai_chat";
-		}
-	}
-	if (
-		options.downstreamProvider === "anthropic" &&
-		options.endpointType === "chat"
-	) {
-		return "anthropic_messages";
-	}
-	if (
-		options.downstreamProvider === "gemini" &&
-		options.endpointType === "chat"
-	) {
-		return "gemini_generate_content";
-	}
-	return null;
-}
-
-function resolveDefaultRequestEntryPath(
-	format: RequestEntryFormat,
-): string | undefined {
-	if (format === "openai_chat") {
-		return "/v1/chat/completions";
-	}
-	if (format === "openai_responses") {
-		return "/v1/responses";
-	}
-	if (format === "anthropic_messages") {
-		return "/v1/messages";
-	}
-	return undefined;
-}
-
-export function applyCustomRequestEntry(options: {
-	entry?: RequestEntry | null;
-	downstreamProvider?: ProviderType;
-	endpointType: EndpointType;
+	formatOverride?: RequestEntryFormat | null;
 }):
 	| {
 			path?: string;
@@ -60,43 +28,43 @@ export function applyCustomRequestEntry(options: {
 	if (!entry?.path && !entry?.format) {
 		return undefined;
 	}
-	const downstreamProvider = options.downstreamProvider ?? "openai";
+	if (!options.downstreamProvider) {
+		throw new Error("downstreamProvider is required");
+	}
 	const effectiveFormat =
-		entry.format ??
-		resolveAutomaticRequestEntryFormat({
-			downstreamProvider,
+		options.formatOverride ??
+		buildRequestEntryFormatAttemptOrder({
+			siteType: options.siteType,
+			entry,
 			endpointType: options.endpointType,
-		});
+		})[0] ??
+		null;
 	if (!effectiveFormat) {
 		return null;
 	}
-	const acceptsRequest =
-		(effectiveFormat === "openai_responses" &&
-			downstreamProvider === "openai" &&
-			options.endpointType === "responses") ||
-		(effectiveFormat === "openai_chat" &&
-			downstreamProvider === "openai" &&
-			options.endpointType === "chat") ||
-		(effectiveFormat === "anthropic_messages" &&
-			downstreamProvider === "anthropic" &&
-			options.endpointType === "chat") ||
-		(effectiveFormat === "gemini_generate_content" &&
-			downstreamProvider === "gemini" &&
-			options.endpointType === "chat");
+	const downstreamEndpointType = isRequestEntryEndpointType(
+		options.endpointType,
+	)
+		? options.endpointType
+		: null;
+	if (!downstreamEndpointType) {
+		return null;
+	}
+	const acceptsRequest = canRequestEntryFormatHandleDownstream({
+		format: effectiveFormat,
+		downstreamProvider: options.downstreamProvider,
+		endpointType: downstreamEndpointType,
+		allowEndpointOverride: Boolean(options.formatOverride),
+	});
 	if (!acceptsRequest) {
 		return null;
 	}
 	const upstreamProvider =
-		effectiveFormat === "anthropic_messages"
-			? "anthropic"
-			: effectiveFormat === "gemini_generate_content"
-				? "gemini"
-				: "openai";
-	const requestEntryFormatToPersist = entry.format
-		? undefined
-		: effectiveFormat;
+		resolveRequestEntryFormatUpstreamProvider(effectiveFormat);
+	const requestEntryFormatToPersist =
+		entry.format || options.formatOverride ? undefined : effectiveFormat;
 	const resolvedPath =
-		entry.path ?? resolveDefaultRequestEntryPath(effectiveFormat);
+		entry.path ?? getRequestEntryFormatDefaultPath(effectiveFormat);
 	if (
 		resolvedPath &&
 		(resolvedPath.startsWith("http://") || resolvedPath.startsWith("https://"))

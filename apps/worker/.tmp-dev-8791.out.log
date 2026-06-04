@@ -1,0 +1,280 @@
+
+ ⛅️ wrangler 4.79.0 (update available 4.97.0)
+─────────────────────────────────────────────
+Your Worker has access to the following bindings:
+Binding                                                       Resource            Mode
+env.CHECKIN_SCHEDULER (CheckinScheduler)                      Durable Object      local
+env.KV_HOT (00000000000000000000000000000000)                 KV Namespace        local
+env.DB (api-worker)                                           D1 Database         local
+env.ATTEMPT_WORKER (attempt-worker)                           Worker              local [not connected]
+env.ASSETS                                                    Assets              local
+
+
+Service bindings, Durable Object bindings, and Tail consumers connect to other Wrangler or Vite dev processes running locally, with their connection status indicated by [connected] or [not connected]. For more details, refer to https://developers.cloudflare.com/workers/runtime-apis/bindings/service-bindings/#local-development
+
+⎔ Starting local server...
+[wrangler:info] Ready on http://127.0.0.1:8791
+[wrangler:info] GET /health 200 OK (8ms)
+[wrangler:info] POST /api/auth/login 200 OK (29ms)
+[wrangler:info] POST /api/auth/login 200 OK (32ms)
+[wrangler:info] GET /api/canonical-models 200 OK (21ms)
+[wrangler:info] POST /api/auth/login 200 OK (51ms)
+[wrangler:info] POST /api/pricing/models 200 OK (22ms)
+[wrangler:info] POST /api/pricing/models 200 OK (16ms)
+[wrangler:info] POST /api/pricing/models 200 OK (19ms)
+[wrangler:info] POST /api/pricing/models 200 OK (18ms)
+[wrangler:info] POST /api/canonical-models/sync 200 OK (70ms)
+[wrangler:info] POST /api/auth/login 200 OK (31ms)
+[wrangler:info] GET /api/pricing/models 200 OK (11ms)
+[wrangler:info] DELETE /api/pricing/models/deepseek-test-1 200 OK (16ms)
+[wrangler:info] DELETE /api/pricing/models/deepseek-test-2 200 OK (13ms)
+[wrangler:info] DELETE /api/pricing/models/af1e8f8b-d9bf-4080-8429-1cb84871ca73 200 OK (16ms)
+[wrangler:info] DELETE /api/pricing/models/fcf710ab-cbbf-4f89-b460-7e5ece00f35e 200 OK (12ms)
+⎔ Reloading local server...
+⎔ Local server updated and ready
+⎔ Connection status updated
+Your Worker has access to the following bindings:
+Binding                                                       Resource            Mode
+env.CHECKIN_SCHEDULER (CheckinScheduler)                      Durable Object      local
+env.KV_HOT (00000000000000000000000000000000)                 KV Namespace        local
+env.DB (api-worker)                                           D1 Database         local
+env.ATTEMPT_WORKER (attempt-worker)                           Worker              local [connected]
+env.ASSETS                                                    Assets              local
+
+⎔ Connection status updated
+Your Worker has access to the following bindings:
+Binding                                                       Resource            Mode
+env.CHECKIN_SCHEDULER (CheckinScheduler)                      Durable Object      local
+env.KV_HOT (00000000000000000000000000000000)                 KV Namespace        local
+env.DB (api-worker)                                           D1 Database         local
+env.ATTEMPT_WORKER (attempt-worker)                           Worker              local [connected]
+env.ASSETS                                                    Assets              local
+
+⎔ Connection status updated
+Your Worker has access to the following bindings:
+Binding                                                       Resource            Mode
+env.CHECKIN_SCHEDULER (CheckinScheduler)                      Durable Object      local
+env.KV_HOT (00000000000000000000000000000000)                 KV Namespace        local
+env.DB (api-worker)                                           D1 Database         local
+env.ATTEMPT_WORKER (attempt-worker)                           Worker              local [connected]
+env.ASSETS                                                    Assets              local
+
+⎔ Connection status updated
+Your Worker has access to the following bindings:
+Binding                                                       Resource            Mode
+env.CHECKIN_SCHEDULER (CheckinScheduler)                      Durable Object      local
+env.KV_HOT (00000000000000000000000000000000)                 KV Namespace        local
+env.DB (api-worker)                                           D1 Database         local
+env.ATTEMPT_WORKER (attempt-worker)                           Worker              local [not connected]
+env.ASSETS                                                    Assets              local
+
+⎔ Reloading local server...
+⎔ Local server updated and ready
+⎔ Reloading local server...
+⎔ Local server updated and ready
+⎔ Connection status updated
+Your Worker has access to the following bindings:
+Binding                                                       Resource            Mode
+env.CHECKIN_SCHEDULER (CheckinScheduler)                      Durable Object      local
+env.KV_HOT (00000000000000000000000000000000)                 KV Namespace        local
+env.DB (api-worker)                                           D1 Database         local
+env.ATTEMPT_WORKER (attempt-worker)                           Worker              local [connected]
+env.ASSETS                                                    Assets              local
+
+⎔ Connection status updated
+Your Worker has access to the following bindings:
+Binding                                                       Resource            Mode
+env.CHECKIN_SCHEDULER (CheckinScheduler)                      Durable Object      local
+env.KV_HOT (00000000000000000000000000000000)                 KV Namespace        local
+env.DB (api-worker)                                           D1 Database         local
+env.ATTEMPT_WORKER (attempt-worker)                           Worker              local [connected]
+env.ASSETS                                                    Assets              local
+
+⎔ Connection status updated
+Your Worker has access to the following bindings:
+Binding                                                       Resource            Mode
+env.CHECKIN_SCHEDULER (CheckinScheduler)                      Durable Object      local
+env.KV_HOT (00000000000000000000000000000000)                 KV Namespace        local
+env.DB (api-worker)                                           D1 Database         local
+env.ATTEMPT_WORKER (attempt-worker)                           Worker              local [connected]
+env.ASSETS                                                    Assets              local
+
+⎔ Connection status updated
+Your Worker has access to the following bindings:
+Binding                                                       Resource            Mode
+env.CHECKIN_SCHEDULER (CheckinScheduler)                      Durable Object      local
+env.KV_HOT (00000000000000000000000000000000)                 KV Namespace        local
+env.DB (api-worker)                                           D1 Database         local
+env.ATTEMPT_WORKER (attempt-worker)                           Worker              local [not connected]
+env.ASSETS                                                    Assets              local
+
+⎔ Connection status updated
+Your Worker has access to the following bindings:
+Binding                                                       Resource            Mode
+env.CHECKIN_SCHEDULER (CheckinScheduler)                      Durable Object      local
+env.KV_HOT (00000000000000000000000000000000)                 KV Namespace        local
+env.DB (api-worker)                                           D1 Database         local
+env.ATTEMPT_WORKER (attempt-worker)                           Worker              local [connected]
+env.ASSETS                                                    Assets              local
+
+⎔ Connection status updated
+Your Worker has access to the following bindings:
+Binding                                                       Resource            Mode
+env.CHECKIN_SCHEDULER (CheckinScheduler)                      Durable Object      local
+env.KV_HOT (00000000000000000000000000000000)                 KV Namespace        local
+env.DB (api-worker)                                           D1 Database         local
+env.ATTEMPT_WORKER (attempt-worker)                           Worker              local [not connected]
+env.ASSETS                                                    Assets              local
+
+⎔ Connection status updated
+Your Worker has access to the following bindings:
+Binding                                                       Resource            Mode
+env.CHECKIN_SCHEDULER (CheckinScheduler)                      Durable Object      local
+env.KV_HOT (00000000000000000000000000000000)                 KV Namespace        local
+env.DB (api-worker)                                           D1 Database         local
+env.ATTEMPT_WORKER (attempt-worker)                           Worker              local [connected]
+env.ASSETS                                                    Assets              local
+
+⎔ Reloading local server...
+⎔ Local server updated and ready
+⎔ Connection status updated
+Your Worker has access to the following bindings:
+Binding                                                       Resource            Mode
+env.CHECKIN_SCHEDULER (CheckinScheduler)                      Durable Object      local
+env.KV_HOT (00000000000000000000000000000000)                 KV Namespace        local
+env.DB (api-worker)                                           D1 Database         local
+env.ATTEMPT_WORKER (attempt-worker)                           Worker              local [connected]
+env.ASSETS                                                    Assets              local
+
+⎔ Connection status updated
+Your Worker has access to the following bindings:
+Binding                                                       Resource            Mode
+env.CHECKIN_SCHEDULER (CheckinScheduler)                      Durable Object      local
+env.KV_HOT (00000000000000000000000000000000)                 KV Namespace        local
+env.DB (api-worker)                                           D1 Database         local
+env.ATTEMPT_WORKER (attempt-worker)                           Worker              local [connected]
+env.ASSETS                                                    Assets              local
+
+⎔ Connection status updated
+Your Worker has access to the following bindings:
+Binding                                                       Resource            Mode
+env.CHECKIN_SCHEDULER (CheckinScheduler)                      Durable Object      local
+env.KV_HOT (00000000000000000000000000000000)                 KV Namespace        local
+env.DB (api-worker)                                           D1 Database         local
+env.ATTEMPT_WORKER (attempt-worker)                           Worker              local [not connected]
+env.ASSETS                                                    Assets              local
+
+⎔ Reloading local server...
+⎔ Local server updated and ready
+⎔ Reloading local server...
+⎔ Local server updated and ready
+⎔ Reloading local server...
+⎔ Local server updated and ready
+⎔ Reloading local server...
+⎔ Local server updated and ready
+⎔ Reloading local server...
+⎔ Local server updated and ready
+⎔ Reloading local server...
+⎔ Local server updated and ready
+⎔ Reloading local server...
+⎔ Local server updated and ready
+⎔ Reloading local server...
+⎔ Local server updated and ready
+⎔ Reloading local server...
+⎔ Local server updated and ready
+⎔ Reloading local server...
+⎔ Local server updated and ready
+⎔ Reloading local server...
+⎔ Local server updated and ready
+⎔ Reloading local server...
+⎔ Local server updated and ready
+⎔ Reloading local server...
+⎔ Local server updated and ready
+⎔ Reloading local server...
+⎔ Local server updated and ready
+⎔ Reloading local server...
+⎔ Local server updated and ready
+⎔ Reloading local server...
+⎔ Local server updated and ready
+⎔ Reloading local server...
+⎔ Local server updated and ready
+⎔ Reloading local server...
+⎔ Local server updated and ready
+⎔ Reloading local server...
+⎔ Local server updated and ready
+⎔ Reloading local server...
+⎔ Local server updated and ready
+⎔ Reloading local server...
+⎔ Local server updated and ready
+⎔ Reloading local server...
+⎔ Local server updated and ready
+⎔ Reloading local server...
+⎔ Local server updated and ready
+⎔ Reloading local server...
+⎔ Local server updated and ready
+⎔ Reloading local server...
+⎔ Local server updated and ready
+⎔ Reloading local server...
+⎔ Local server updated and ready
+⎔ Reloading local server...
+⎔ Local server updated and ready
+⎔ Reloading local server...
+⎔ Local server updated and ready
+⎔ Reloading local server...
+⎔ Local server updated and ready
+⎔ Reloading local server...
+⎔ Local server updated and ready
+⎔ Reloading local server...
+⎔ Local server updated and ready
+⎔ Reloading local server...
+⎔ Local server updated and ready
+⎔ Reloading local server...
+⎔ Local server updated and ready
+⎔ Reloading local server...
+⎔ Local server updated and ready
+⎔ Reloading local server...
+⎔ Local server updated and ready
+⎔ Reloading local server...
+⎔ Local server updated and ready
+⎔ Reloading local server...
+⎔ Local server updated and ready
+⎔ Reloading local server...
+⎔ Local server updated and ready
+⎔ Reloading local server...
+⎔ Local server updated and ready
+⎔ Reloading local server...
+⎔ Local server updated and ready
+⎔ Reloading local server...
+⎔ Local server updated and ready
+⎔ Reloading local server...
+⎔ Local server updated and ready
+⎔ Reloading local server...
+⎔ Local server updated and ready
+⎔ Reloading local server...
+⎔ Local server updated and ready
+⎔ Reloading local server...
+⎔ Local server updated and ready
+⎔ Reloading local server...
+⎔ Local server updated and ready
+⎔ Reloading local server...
+⎔ Local server updated and ready
+⎔ Reloading local server...
+⎔ Local server updated and ready
+⎔ Reloading local server...
+⎔ Local server updated and ready
+⎔ Reloading local server...
+⎔ Local server updated and ready
+⎔ Reloading local server...
+⎔ Local server updated and ready
+⎔ Reloading local server...
+⎔ Local server updated and ready
+⎔ Reloading local server...
+⎔ Local server updated and ready
+⎔ Reloading local server...
+⎔ Local server updated and ready
+⎔ Reloading local server...
+⎔ Local server updated and ready
+⎔ Reloading local server...
+⎔ Local server updated and ready
+⎔ Reloading local server...
+⎔ Local server updated and ready

@@ -6,4 +6,5 @@ export const doneHubUpstreamDescriptor: UpstreamDescriptor = {
 	defaultProvider: "openai",
 	supportsCheckin: false,
 	supportsSystemCredentials: true,
+	supportedRequestEntryFormats: ["openai_chat", "openai_responses"],
 };

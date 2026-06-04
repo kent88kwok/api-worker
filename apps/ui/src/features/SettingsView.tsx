@@ -1183,6 +1183,34 @@ export const SettingsView = ({
 						</div>
 						<div class="app-settings-row">
 							<div class="app-settings-row__main">
+								<label
+									class="app-settings-row__label"
+									for="site-verification-model-limit"
+								>
+									验证最多尝试模型数
+								</label>
+								<p class="app-settings-row__hint">
+									限制单个站点验证时最多尝试多少个模型；自动请求格式会在同一模型下继续尝试
+								</p>
+							</div>
+							<Input
+								class="app-settings-row__control app-settings-row__control--compact"
+								id="site-verification-model-limit"
+								name="site_verification_model_limit"
+								type="number"
+								min="1"
+								step="1"
+								value={settingsForm.site_verification_model_limit}
+								onInput={(event) => {
+									const target = event.currentTarget as HTMLInputElement | null;
+									onFormChange({
+										site_verification_model_limit: target?.value ?? "",
+									});
+								}}
+							/>
+						</div>
+						<div class="app-settings-row">
+							<div class="app-settings-row__main">
 								<span class="app-settings-row__label">
 									站点任务失败自动回退
 								</span>

@@ -45,6 +45,10 @@ import { upsertChannelModelCapabilities } from "./channel-model-capabilities";
 type SiteTaskRuntime = {
 	concurrency: number;
 	timeoutMs: number;
+	verificationModelLimit: number;
+	retrySleepErrorCodes: string[];
+	retryReturnErrorCodes: string[];
+	channelDisableErrorCodes: string[];
 };
 
 type SiteTaskDispatchMode = "main" | "attempt";
@@ -153,6 +157,7 @@ export async function verifyChannelById(
 	db: D1Database,
 	channelId: string,
 ): Promise<SiteVerificationResult | null> {
+	const runtimeSettings = await getProxyRuntimeSettings(db);
 	const channel = await getChannelById(db, channelId);
 	if (!channel) {
 		return null;
@@ -180,6 +185,12 @@ export async function verifyChannelById(
 		channel,
 		tokens,
 		mode: channel.status === "disabled" ? "recovery" : "service",
+		runtimeSettings: {
+			verification_model_limit: runtimeSettings.verification_model_limit,
+			retry_sleep_error_codes: runtimeSettings.retry_sleep_error_codes,
+			retry_return_error_codes: runtimeSettings.retry_return_error_codes,
+			channel_disable_error_codes: runtimeSettings.channel_disable_error_codes,
+		},
 	});
 	await persistSiteVerificationResult({
 		db,
@@ -238,6 +249,12 @@ export async function verifySitesByIds(
 				channel,
 				tokens,
 				mode: "service",
+				runtimeSettings: {
+					verification_model_limit: runtime.verificationModelLimit,
+					retry_sleep_error_codes: runtime.retrySleepErrorCodes,
+					retry_return_error_codes: runtime.retryReturnErrorCodes,
+					channel_disable_error_codes: runtime.channelDisableErrorCodes,
+				},
 			});
 			await persistSiteVerificationResult({
 				db,
@@ -487,6 +504,13 @@ async function getSiteTaskRuntime(db: D1Database): Promise<SiteTaskRuntime> {
 	return {
 		concurrency: Math.max(1, runtimeSettings.site_task_concurrency),
 		timeoutMs: Math.max(1, runtimeSettings.site_task_timeout_ms),
+		verificationModelLimit: Math.max(
+			1,
+			runtimeSettings.verification_model_limit,
+		),
+		retrySleepErrorCodes: runtimeSettings.retry_sleep_error_codes,
+		retryReturnErrorCodes: runtimeSettings.retry_return_error_codes,
+		channelDisableErrorCodes: runtimeSettings.channel_disable_error_codes,
 	};
 }
 
@@ -1043,6 +1067,12 @@ export async function recoverDisabledChannelsViaWorker(
 					channel,
 					tokens,
 					mode: "recovery",
+					runtimeSettings: {
+						verification_model_limit: runtime.verificationModelLimit,
+						retry_sleep_error_codes: runtime.retrySleepErrorCodes,
+						retry_return_error_codes: runtime.retryReturnErrorCodes,
+						channel_disable_error_codes: runtime.channelDisableErrorCodes,
+					},
 				});
 				await persistSiteVerificationResult({
 					db,

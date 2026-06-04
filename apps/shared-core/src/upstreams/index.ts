@@ -4,7 +4,12 @@ import { geminiUpstreamDescriptor } from "./gemini";
 import { newApiUpstreamDescriptor } from "./new-api";
 import { openAiUpstreamDescriptor } from "./openai";
 import { subApiUpstreamDescriptor } from "./subapi";
-import type { ProviderType, SiteType, UpstreamDescriptor } from "./types";
+import type {
+	ProviderType,
+	RequestEntryFormat,
+	SiteType,
+	UpstreamDescriptor,
+} from "./types";
 
 const descriptors: UpstreamDescriptor[] = [
 	newApiUpstreamDescriptor,
@@ -61,6 +66,24 @@ export function supportsSystemCredentials(siteType: SiteType): boolean {
 	return getUpstreamDescriptor(siteType).supportsSystemCredentials;
 }
 
+export function getSupportedRequestEntryFormatsForSiteType(
+	siteType: SiteType,
+): RequestEntryFormat[] {
+	return [...getUpstreamDescriptor(siteType).supportedRequestEntryFormats];
+}
+
+export function isRequestEntryFormatAllowedForSiteType(
+	siteType: SiteType,
+	format: string,
+): boolean {
+	if (!format) {
+		return true;
+	}
+	return getSupportedRequestEntryFormatsForSiteType(siteType).includes(
+		format as RequestEntryFormat,
+	);
+}
+
 export function resolveDefaultProviderForSiteType(
 	siteType: SiteType,
 ): ProviderType {
@@ -76,4 +99,4 @@ export {
 	subApiUpstreamDescriptor,
 };
 
-export type { ProviderType, SiteType, UpstreamDescriptor };
+export type { ProviderType, RequestEntryFormat, SiteType, UpstreamDescriptor };

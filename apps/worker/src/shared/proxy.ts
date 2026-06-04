@@ -1126,6 +1126,8 @@ proxy.all("/*", tokenAuth, async (c) => {
 		downstreamModel,
 		requestModelRaw,
 		canonicalAliases,
+		downstreamProvider,
+		endpointType,
 		maxAttempts,
 	});
 	responseCandidateCount = candidates.length;

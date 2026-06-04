@@ -4,8 +4,10 @@ import {
 	resolveEffectiveModelIds,
 } from "./channel-effective-models";
 import type { ChannelRow } from "./channel-types";
+import { extractModelIds } from "./channel-models";
 import type { ChannelTokenTestItem } from "./channel-testing";
 import { deriveCanonicalModel } from "./model-normalization";
+import { safeJsonParse } from "../utils/json";
 
 export type VerificationTokenSelectionInput = {
 	id?: string;
@@ -19,6 +21,16 @@ export type VerificationModelSelection = {
 	source: string;
 	all: string[];
 };
+
+function parseRawTokenModelIds(raw: string | null | undefined): string[] {
+	const parsed = safeJsonParse<unknown>(raw, []);
+	if (!Array.isArray(parsed)) {
+		return [];
+	}
+	return parsed
+		.map((item) => String(item ?? "").trim())
+		.filter((item) => item.length > 0);
+}
 
 function pickRandomItem<T>(items: T[], random: () => number): T | null {
 	if (items.length === 0) {
@@ -109,4 +121,59 @@ export function collectCandidateModels(options: {
 		return { model: null, source: "no_matching_call_token", all };
 	}
 	return { model: null, source: "missing_model", all };
+}
+
+export function resolveVerificationRequestModels(options: {
+	model: string | null;
+	tokenModelsJson?: string | null;
+	channelModelsJson?: string | null;
+}): string[] {
+	const canonicalModel = deriveCanonicalModel(options.model);
+	if (!canonicalModel) {
+		return [];
+	}
+
+	const tokenCandidates = parseRawTokenModelIds(options.tokenModelsJson);
+	const channelCandidates = extractModelIds({
+		models_json: options.channelModelsJson,
+	});
+	const collectMatches = (candidates: string[]): string[] => {
+		const ordered = new Set<string>();
+		for (const candidate of candidates) {
+			if (deriveCanonicalModel(candidate) !== canonicalModel) {
+				continue;
+			}
+			ordered.add(candidate);
+		}
+		return Array.from(ordered);
+	};
+	const tokenMatches = collectMatches(tokenCandidates);
+	if (tokenCandidates.length > 0) {
+		return tokenMatches;
+	}
+	return collectMatches(channelCandidates);
+}
+
+export function buildVerificationModelAttemptOrder(
+	selectedModel: string | null,
+	allModels: string[],
+	maxModels?: number,
+): string[] {
+	const ordered = new Set<string>();
+	const append = (value: string | null) => {
+		const normalized = String(value ?? "").trim();
+		if (!normalized) {
+			return;
+		}
+		ordered.add(normalized);
+	};
+	append(selectedModel);
+	for (const model of allModels) {
+		append(model);
+	}
+	const orderedModels = Array.from(ordered);
+	if (maxModels === undefined || !Number.isFinite(maxModels) || maxModels < 1) {
+		return orderedModels;
+	}
+	return orderedModels.slice(0, Math.floor(maxModels));
 }

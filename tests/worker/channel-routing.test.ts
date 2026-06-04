@@ -92,6 +92,9 @@ describe("channel routing with effective models", () => {
 			buildChannel({
 				id: "channel-a",
 				name: "Channel A",
+				metadata_json: JSON.stringify({
+					site_type: "openai",
+				}),
 				models_json: JSON.stringify([
 					{ id: "gpt-5.2" },
 					{ id: "gpt-5.2-chat-latest" },
@@ -101,6 +104,9 @@ describe("channel routing with effective models", () => {
 			buildChannel({
 				id: "channel-b",
 				name: "Channel B",
+				metadata_json: JSON.stringify({
+					site_type: "openai",
+				}),
 				models_json: JSON.stringify([
 					{ id: "gpt-5.2" },
 					{ id: "gpt-5.2-mini" },
@@ -118,15 +124,56 @@ describe("channel routing with effective models", () => {
 				"gpt-5.2-2026-05-01",
 				"gpt-5.2-mini",
 			],
+			downstreamProvider: "openai",
+			endpointType: "chat",
 			maxAttempts: 6,
 		});
 
-		expect(plan.map((item) => `${item.channel.id}:${item.model}`)).toEqual([
-			"channel-a:gpt-5.2-chat-latest",
-			"channel-a:gpt-5.2",
-			"channel-a:gpt-5.2-2026-05-01",
-			"channel-b:gpt-5.2",
-			"channel-b:gpt-5.2-mini",
+		expect(
+			plan.map(
+				(item) =>
+					`${item.channel.id}:${item.model}:${item.requestEntryFormat ?? "default"}`,
+			),
+		).toEqual([
+			"channel-a:gpt-5.2-chat-latest:openai_chat",
+			"channel-a:gpt-5.2-chat-latest:openai_responses",
+			"channel-a:gpt-5.2:openai_chat",
+			"channel-a:gpt-5.2:openai_responses",
+			"channel-a:gpt-5.2-2026-05-01:openai_chat",
+			"channel-a:gpt-5.2-2026-05-01:openai_responses",
+		]);
+	});
+
+	it("正常请求不会把 canonical 名直接放进尝试计划", () => {
+		const ordered = [
+			buildChannel({
+				id: "channel-a",
+				name: "Channel A",
+				metadata_json: JSON.stringify({
+					site_type: "openai",
+				}),
+				models_json: JSON.stringify([
+					{ id: "nvidia/llama-3.1-nemotron-51b-instruct" },
+				]),
+			}),
+		];
+
+		const plan = buildChannelAttemptPlan({
+			ordered,
+			downstreamModel: "llama-3.1-nemotron-51b",
+			requestModelRaw: "llama-3.1-nemotron-51b",
+			canonicalAliases: [
+				"llama-3.1-nemotron-51b",
+				"nvidia/llama-3.1-nemotron-51b-instruct",
+			],
+			downstreamProvider: "openai",
+			endpointType: "chat",
+			maxAttempts: 4,
+		});
+
+		expect(plan.map((item) => item.model)).toEqual([
+			"nvidia/llama-3.1-nemotron-51b-instruct",
+			"nvidia/llama-3.1-nemotron-51b-instruct",
 		]);
 	});
 });

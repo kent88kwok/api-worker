@@ -7,4 +7,5 @@ export const anthropicUpstreamDescriptor: UpstreamDescriptor = {
 	defaultBaseUrl: "https://api.anthropic.com",
 	supportsCheckin: false,
 	supportsSystemCredentials: false,
+	supportedRequestEntryFormats: ["anthropic_messages"],
 };

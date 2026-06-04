@@ -72,6 +72,7 @@ settings.get("/", async (c) => {
 			runtimeSettings.channel_disable_error_threshold,
 		channel_disable_error_code_minutes:
 			runtimeSettings.channel_disable_error_code_minutes,
+		site_verification_model_limit: runtimeSettings.verification_model_limit,
 		runtime_config: runtimeConfig,
 		runtime_settings: runtimeSettings,
 		pricing_settings: pricingSettings,
@@ -118,6 +119,7 @@ settings.put("/", async (c) => {
 		site_task_concurrency?: number;
 		site_task_timeout_ms?: number;
 		site_task_fallback_enabled?: boolean;
+		verification_model_limit?: number;
 		attempt_log_enabled?: boolean;
 		attempt_log_retention_days?: number;
 	} = {};
@@ -536,6 +538,20 @@ settings.put("/", async (c) => {
 			);
 		}
 		runtimePatch.site_task_fallback_enabled = enabled;
+		runtimeTouched = true;
+	}
+
+	if (body.site_verification_model_limit !== undefined) {
+		const limit = Number(body.site_verification_model_limit);
+		if (Number.isNaN(limit) || limit < 1 || !Number.isInteger(limit)) {
+			return jsonError(
+				c,
+				400,
+				"invalid_site_verification_model_limit",
+				"invalid_site_verification_model_limit",
+			);
+		}
+		runtimePatch.verification_model_limit = limit;
 		runtimeTouched = true;
 	}
 

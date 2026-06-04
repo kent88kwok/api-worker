@@ -7,4 +7,5 @@ export const openAiUpstreamDescriptor: UpstreamDescriptor = {
 	defaultBaseUrl: "https://api.openai.com",
 	supportsCheckin: false,
 	supportsSystemCredentials: false,
+	supportedRequestEntryFormats: ["openai_chat", "openai_responses"],
 };

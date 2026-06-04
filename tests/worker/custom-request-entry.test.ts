@@ -2,12 +2,28 @@ import { describe, expect, it } from "vitest";
 import { applyCustomRequestEntry } from "../../apps/worker/src/services/proxy/custom-request-entry";
 
 describe("custom request entry", () => {
+	it("缺少 downstreamProvider 时会直接报错，避免隐式回退到 OpenAI", () => {
+		expect(() =>
+			// @ts-expect-error 故意覆盖缺少 downstreamProvider 的非法调用
+			applyCustomRequestEntry({
+				siteType: "openai",
+				entry: {
+					path: "/codex",
+					format: "openai_responses",
+				},
+				endpointType: "responses",
+			}),
+		).toThrowError("downstreamProvider is required");
+	});
+
 	it("responses 自定义入口会匹配 responses 请求", () => {
 		const entry = applyCustomRequestEntry({
+			siteType: "openai",
 			entry: {
 				path: "/codex",
 				format: "openai_responses",
 			},
+			downstreamProvider: "openai",
 			endpointType: "responses",
 		});
 
@@ -16,6 +32,7 @@ describe("custom request entry", () => {
 
 	it("自动入口会按当前 responses 请求解析为 openai_responses", () => {
 		const entry = applyCustomRequestEntry({
+			siteType: "openai",
 			entry: {
 				path: "/codex",
 				format: null,
@@ -33,22 +50,44 @@ describe("custom request entry", () => {
 
 	it("responses 自定义入口不会接收 chat 请求", () => {
 		const entry = applyCustomRequestEntry({
+			siteType: "openai",
 			entry: {
 				path: "/codex",
 				format: "openai_responses",
 			},
+			downstreamProvider: "openai",
 			endpointType: "chat",
 		});
 
 		expect(entry).toBeNull();
 	});
 
+	it("OpenAI 自动格式回退时允许在 chat 请求里切到 responses", () => {
+		const entry = applyCustomRequestEntry({
+			siteType: "openai",
+			entry: {
+				path: "/codex",
+				format: null,
+			},
+			downstreamProvider: "openai",
+			endpointType: "chat",
+			formatOverride: "openai_responses",
+		});
+
+		expect(entry).toEqual({
+			path: "/codex",
+			upstreamProvider: "openai",
+		});
+	});
+
 	it("完整 URL 入口会作为绝对地址", () => {
 		const entry = applyCustomRequestEntry({
+			siteType: "openai",
 			entry: {
 				path: "https://example.com/codex",
 				format: "openai_responses",
 			},
+			downstreamProvider: "openai",
 			endpointType: "responses",
 		});
 
@@ -60,6 +99,7 @@ describe("custom request entry", () => {
 
 	it("anthropic 自定义入口只匹配 Anthropic chat 请求", () => {
 		const entry = applyCustomRequestEntry({
+			siteType: "anthropic",
 			entry: {
 				path: "/v1/messages",
 				format: "anthropic_messages",
@@ -76,6 +116,7 @@ describe("custom request entry", () => {
 
 	it("anthropic 自定义入口不会接收 OpenAI chat 请求", () => {
 		const entry = applyCustomRequestEntry({
+			siteType: "anthropic",
 			entry: {
 				path: "/v1/messages",
 				format: "anthropic_messages",
@@ -89,6 +130,7 @@ describe("custom request entry", () => {
 
 	it("gemini 自定义入口只匹配 Gemini chat 请求", () => {
 		const entry = applyCustomRequestEntry({
+			siteType: "gemini",
 			entry: {
 				path: "/v1beta/models/{model}:generateContent",
 				format: "gemini_generate_content",
@@ -106,6 +148,7 @@ describe("custom request entry", () => {
 	it("仅配置 OpenAI Responses 请求格式时会落到默认端点", () => {
 		expect(
 			applyCustomRequestEntry({
+				siteType: "openai",
 				entry: {
 					path: null,
 					format: "openai_responses",

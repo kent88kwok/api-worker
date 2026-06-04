@@ -6,6 +6,12 @@ import {
 import { extractModelIds } from "./channel-models";
 import { deriveCanonicalModel } from "./model-normalization";
 import {
+	buildRequestEntryFormatAttemptOrder,
+	resolveEndpointTypeForRequestEntryFormat,
+} from "./request-entry-attempts";
+import type { EndpointType, ProviderType } from "./provider-transform";
+import type { RequestEntryFormat } from "./site-metadata";
+import {
 	parseManualModelConfig,
 	resolveEffectiveModelIds,
 } from "./channel-effective-models";
@@ -14,6 +20,8 @@ import type { ChannelRecord } from "./channel-types";
 export type ChannelAttemptPlanItem = {
 	channel: ChannelRecord;
 	model: string | null;
+	requestEntryFormat?: RequestEntryFormat | null;
+	requestEndpointType?: EndpointType | null;
 };
 
 function normalizeAttemptModel(
@@ -137,6 +145,7 @@ export function selectCandidateChannels(
 
 export function buildChannelAttemptModels(options: {
 	channel: ChannelRecord;
+	metadata?: ChannelMetadata;
 	downstreamModel: string | null;
 	requestModelRaw: string | null;
 	canonicalAliases?: string[];
@@ -148,6 +157,8 @@ export function buildChannelAttemptModels(options: {
 	if (!canonicalModel) {
 		return [options.downstreamModel ?? options.requestModelRaw ?? null];
 	}
+	const metadata =
+		options.metadata ?? parseChannelMetadata(options.channel.metadata_json);
 	const rawIds = extractModelIds(options.channel);
 	const canonicalAliasSet = new Set(
 		(options.canonicalAliases ?? [])
@@ -156,7 +167,7 @@ export function buildChannelAttemptModels(options: {
 	);
 	const candidates: string[] = [];
 	const seen = new Set<string>();
-	const appendCandidate = (value: string | null | undefined, force = false) => {
+	const appendCandidate = (value: string | null | undefined) => {
 		const normalized = normalizeAttemptModel(value);
 		if (!normalized || seen.has(normalized)) {
 			return;
@@ -165,22 +176,34 @@ export function buildChannelAttemptModels(options: {
 			canonicalAliasSet.size > 0 && canonicalAliasSet.has(normalized);
 		const allowedByHeuristic =
 			(deriveCanonicalModel(normalized) ?? normalized) === canonicalModel;
-		if (!force && !allowedByAliasTable && !allowedByHeuristic) {
+		if (!allowedByAliasTable && !allowedByHeuristic) {
 			return;
 		}
 		seen.add(normalized);
 		candidates.push(normalized);
 	};
-	if (options.preferRequestedModel) {
-		appendCandidate(options.requestModelRaw, true);
+	if (
+		options.preferRequestedModel &&
+		options.requestModelRaw &&
+		rawIds.includes(options.requestModelRaw)
+	) {
+		appendCandidate(options.requestModelRaw);
+	}
+	const mappedModel = resolveMappedModel(
+		metadata.model_mapping,
+		options.downstreamModel,
+	);
+	if (
+		mappedModel &&
+		mappedModel !== options.downstreamModel &&
+		deriveCanonicalModel(mappedModel) === canonicalModel
+	) {
+		appendCandidate(mappedModel);
 	}
 	for (const rawId of rawIds) {
 		appendCandidate(rawId);
 	}
-	appendCandidate(options.downstreamModel ?? canonicalModel, true);
-	return candidates.length > 0
-		? candidates
-		: [options.downstreamModel ?? options.requestModelRaw ?? canonicalModel];
+	return candidates;
 }
 
 export function buildChannelAttemptPlan(options: {
@@ -188,31 +211,59 @@ export function buildChannelAttemptPlan(options: {
 	downstreamModel: string | null;
 	requestModelRaw: string | null;
 	canonicalAliases?: string[];
+	downstreamProvider: ProviderType;
+	endpointType: EndpointType;
 	maxAttempts: number;
 }): ChannelAttemptPlanItem[] {
 	const plan: ChannelAttemptPlanItem[] = [];
 	const seen = new Set<string>();
 	for (const [channelIndex, channel] of options.ordered.entries()) {
+		const metadata = parseChannelMetadata(channel.metadata_json);
 		const models = buildChannelAttemptModels({
 			channel,
+			metadata,
 			downstreamModel: options.downstreamModel,
 			requestModelRaw: options.requestModelRaw,
 			canonicalAliases: options.canonicalAliases,
 			preferRequestedModel: channelIndex === 0,
 		});
+		const requestFormats = buildRequestEntryFormatAttemptOrder({
+			siteType: metadata.site_type,
+			entry: metadata.request_entry,
+			endpointType: options.endpointType,
+		});
+		const requestAttempts =
+			requestFormats.length > 0
+				? requestFormats.map((format) => ({
+						requestEntryFormat: format,
+						requestEndpointType: resolveEndpointTypeForRequestEntryFormat(
+							format,
+							options.endpointType,
+						),
+					}))
+				: [
+						{
+							requestEntryFormat: null,
+							requestEndpointType: options.endpointType,
+						},
+					];
 		for (const model of models) {
-			const key = `${channel.id}::${model ?? ""}`;
-			if (seen.has(key)) {
-				continue;
+			for (const requestAttempt of requestAttempts) {
+				const key = `${channel.id}::${model ?? ""}::${requestAttempt.requestEntryFormat ?? ""}`;
+				if (seen.has(key)) {
+					continue;
+				}
+				seen.add(key);
+				if (plan.length >= options.maxAttempts) {
+					return plan;
+				}
+				plan.push({
+					channel,
+					model,
+					requestEntryFormat: requestAttempt.requestEntryFormat,
+					requestEndpointType: requestAttempt.requestEndpointType,
+				});
 			}
-			seen.add(key);
-			if (plan.length >= options.maxAttempts) {
-				return plan;
-			}
-			plan.push({
-				channel,
-				model,
-			});
 		}
 	}
 	return plan;

@@ -359,6 +359,11 @@ const buildSettingsFormFromSettings = (settings: Settings): SettingsForm => {
 		),
 		site_task_fallback_enabled:
 			runtimeSettings?.site_task_fallback_enabled ?? true,
+		site_verification_model_limit: String(
+			runtimeSettings?.verification_model_limit ??
+				settings.site_verification_model_limit ??
+				3,
+		),
 		pricing_sync_enabled: settings.pricing_settings?.sync_enabled ?? false,
 		pricing_sync_schedule_time:
 			settings.pricing_settings?.sync_schedule_time ?? "04:40",
@@ -2096,6 +2101,9 @@ const App = () => {
 			);
 			const siteTaskConcurrency = Number(settingsForm.site_task_concurrency);
 			const siteTaskTimeoutMs = Number(settingsForm.site_task_timeout_ms);
+			const siteVerificationModelLimit = Number(
+				settingsForm.site_verification_model_limit,
+			);
 			const pricingScheduleTime =
 				settingsForm.pricing_sync_schedule_time.trim();
 			const pricingMarkup = Number(settingsForm.pricing_default_markup);
@@ -2222,6 +2230,14 @@ const App = () => {
 				pushNotice("warning", "站点任务超时需为正整数");
 				return;
 			}
+			if (
+				Number.isNaN(siteVerificationModelLimit) ||
+				siteVerificationModelLimit < 1 ||
+				!Number.isInteger(siteVerificationModelLimit)
+			) {
+				pushNotice("warning", "验证最多尝试模型数需为正整数");
+				return;
+			}
 			if (!/^\d{2}:\d{2}$/.test(channelRecoveryProbeScheduleTime)) {
 				pushNotice("warning", "禁用渠道抽测时间需为 HH:mm");
 				return;
@@ -2305,6 +2321,7 @@ const App = () => {
 				site_task_concurrency: siteTaskConcurrency,
 				site_task_timeout_ms: siteTaskTimeoutMs,
 				site_task_fallback_enabled: settingsForm.site_task_fallback_enabled,
+				site_verification_model_limit: siteVerificationModelLimit,
 				pricing_sync_enabled: settingsForm.pricing_sync_enabled,
 				pricing_sync_schedule_time: pricingScheduleTime,
 				pricing_sync_sources: normalizeErrorCodeList(

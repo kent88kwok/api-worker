@@ -7,4 +7,5 @@ export const geminiUpstreamDescriptor: UpstreamDescriptor = {
 	defaultBaseUrl: "https://generativelanguage.googleapis.com",
 	supportsCheckin: false,
 	supportsSystemCredentials: false,
+	supportedRequestEntryFormats: ["gemini_generate_content"],
 };

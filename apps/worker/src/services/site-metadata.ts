@@ -1,7 +1,11 @@
-import { normalizeSiteType } from "../../../shared-core/src";
+import {
+	normalizeRequestEntryFormat,
+	normalizeSiteType,
+	type RequestEntryFormat,
+} from "../../../shared-core/src";
 import { safeJsonParse } from "../utils/json";
 import { normalizeBaseUrl } from "../utils/url";
-export type { SiteType } from "../../../shared-core/src";
+export type { RequestEntryFormat, SiteType } from "../../../shared-core/src";
 import type { SiteType } from "../../../shared-core/src";
 
 export type EndpointOverrides = {
@@ -9,12 +13,6 @@ export type EndpointOverrides = {
 	image_url?: string | null;
 	embedding_url?: string | null;
 };
-
-export type RequestEntryFormat =
-	| "openai_chat"
-	| "openai_responses"
-	| "anthropic_messages"
-	| "gemini_generate_content";
 
 export type RequestEntry = {
 	path: string | null;
@@ -56,39 +54,6 @@ const normalizeEntryPath = (value: unknown): string | null => {
 	}
 	const withLeadingSlash = trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
 	return withLeadingSlash.replace(/\/+$/u, "") || "/";
-};
-
-const normalizeRequestEntryFormat = (
-	value: unknown,
-): RequestEntryFormat | null => {
-	const normalized = String(value ?? "")
-		.trim()
-		.toLowerCase();
-	if (
-		normalized === "openai_chat" ||
-		normalized === "chat" ||
-		normalized === "chat_completions"
-	) {
-		return "openai_chat";
-	}
-	if (normalized === "openai_responses" || normalized === "responses") {
-		return "openai_responses";
-	}
-	if (
-		normalized === "anthropic_messages" ||
-		normalized === "anthropic" ||
-		normalized === "messages"
-	) {
-		return "anthropic_messages";
-	}
-	if (
-		normalized === "gemini_generate_content" ||
-		normalized === "gemini" ||
-		normalized === "generate_content"
-	) {
-		return "gemini_generate_content";
-	}
-	return null;
 };
 
 const parseRequestEntry = (value: unknown): RequestEntry => {

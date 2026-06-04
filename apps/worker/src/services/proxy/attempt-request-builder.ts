@@ -3,18 +3,12 @@ import {
 	mergeQuery,
 	resolveChannelBaseUrl,
 } from "./request-planning";
-import { transformOpenAiStreamOptions } from "./usage-observe";
 import { getProviderAdapter } from "../providers";
-import { buildProviderChatRequest } from "../providers/chat-request";
 import type { EndpointType, ProviderType } from "../provider-transform";
-import {
-	buildProviderEmbeddingRequest,
-	buildProviderImageRequest,
-} from "../providers/requests";
-import { rewriteModelInRawJsonRequest } from "./request-body";
-import { shouldHandleOpenAiStreamOptions } from "./stream-options";
-import { applyCustomRequestEntry } from "./custom-request-entry";
 import type { RequestEntryFormat } from "../site-metadata";
+import { resolveAttemptRequestBuildPlan } from "./request-build-plan";
+import { executeAttemptRequestBuildPlan } from "./request-build-strategy";
+import { applyAttemptStreamOptionsPolicy } from "./request-stream-options-policy";
 
 export type PreparedAttemptRequest = {
 	upstreamProvider: string;
@@ -44,6 +38,7 @@ export async function prepareAttemptRequest(options: {
 	attemptTarget: any;
 	upstreamModelOverride?: string | null;
 	recordModelOverride?: string | null;
+	requestEntryFormatOverride?: RequestEntryFormat | null;
 	requestHeaders: Headers;
 	targetPath: string;
 	effectiveRequestText: string;
@@ -63,7 +58,6 @@ export async function prepareAttemptRequest(options: {
 	) => Promise<"supported" | "unsupported" | "unknown">;
 }): Promise<PreparedAttemptRequest | null> {
 	const metadata = options.attemptTarget.metadata;
-	let upstreamProvider = options.attemptTarget.upstreamProvider;
 	const upstreamModel =
 		options.upstreamModelOverride ?? options.attemptTarget.upstreamModel;
 	const recordModel =
@@ -77,22 +71,18 @@ export async function prepareAttemptRequest(options: {
 	let upstreamFallbackPath: string | undefined;
 	let upstreamBodyText = options.effectiveRequestText || undefined;
 	let absoluteUrl: string | undefined;
-	const customEntry = applyCustomRequestEntry({
-		entry: metadata.request_entry,
+	const buildPlan = resolveAttemptRequestBuildPlan({
+		attemptUpstreamProvider: options.attemptTarget.upstreamProvider,
+		siteType: metadata.site_type,
+		requestEntry: metadata.request_entry,
 		downstreamProvider: options.downstreamProvider,
 		endpointType: options.endpointType,
+		requestEntryFormatOverride: options.requestEntryFormatOverride,
 	});
-
-	if (customEntry === null) {
+	if (!buildPlan) {
 		return null;
 	}
-	if (customEntry) {
-		upstreamProvider = customEntry.upstreamProvider;
-		absoluteUrl = customEntry.absoluteUrl;
-		if (customEntry.path) {
-			upstreamRequestPath = customEntry.path;
-		}
-	}
+	const upstreamProvider = buildPlan.upstreamProvider;
 
 	const providerAdapter = getProviderAdapter(upstreamProvider);
 	const headers = buildUpstreamHeaders(
@@ -103,141 +93,47 @@ export async function prepareAttemptRequest(options: {
 	);
 	headers.delete("host");
 	headers.delete("content-length");
-	const sameProvider = upstreamProvider === options.downstreamProvider;
-
-	if (customEntry) {
-		// Custom request entries keep the downstream body as-is and only override
-		// the target path/provider selected by the explicit request format.
-	} else if (options.endpointType === "passthrough") {
-		if (!sameProvider) {
-			return null;
-		}
-		upstreamRequestPath = providerAdapter.applyModelToPath(
-			upstreamRequestPath,
-			upstreamModel,
-		);
-		if (upstreamRequestPath === options.targetPath && upstreamModel) {
-			upstreamBodyText = options.parsedBody
-				? JSON.stringify({
-						...options.parsedBody,
-						model: upstreamModel,
-					})
-				: rewriteModelInRawJsonRequest(upstreamBodyText, upstreamModel);
-		}
-	} else if (sameProvider) {
-		upstreamRequestPath = providerAdapter.applyModelToPath(
-			upstreamRequestPath,
-			upstreamModel,
-		);
-		if (upstreamRequestPath === options.targetPath && upstreamModel) {
-			upstreamBodyText = options.parsedBody
-				? JSON.stringify({
-						...options.parsedBody,
-						model: upstreamModel,
-					})
-				: rewriteModelInRawJsonRequest(upstreamBodyText, upstreamModel);
-		}
-	} else {
-		let built: { request: any; bodyText?: string } | null = null;
-
-		if (
-			options.endpointType === "chat" ||
-			options.endpointType === "responses"
-		) {
-			const chatPayload = options.ensureNormalizedChat();
-			if (!chatPayload) {
-				return null;
-			}
-			const request = buildProviderChatRequest(
-				upstreamProvider as any,
-				chatPayload,
-				upstreamModel,
-				options.endpointType as any,
-				options.isStream,
-				metadata.endpoint_overrides,
-			);
-			if (!request) {
-				return null;
-			}
-			built = {
-				request,
-				bodyText: request.body ? JSON.stringify(request.body) : undefined,
-			};
-		} else if (options.endpointType === "embeddings") {
-			const embeddingPayload = options.ensureNormalizedEmbedding();
-			if (!embeddingPayload) {
-				return null;
-			}
-			const request = buildProviderEmbeddingRequest(
-				upstreamProvider as any,
-				embeddingPayload,
-				upstreamModel,
-				metadata.endpoint_overrides,
-			);
-			if (!request) {
-				return null;
-			}
-			built = {
-				request,
-				bodyText: request.body ? JSON.stringify(request.body) : undefined,
-			};
-		} else if (options.endpointType === "images") {
-			const imagePayload = options.ensureNormalizedImage();
-			if (!imagePayload) {
-				return null;
-			}
-			const request = buildProviderImageRequest(
-				upstreamProvider as any,
-				imagePayload,
-				upstreamModel,
-				metadata.endpoint_overrides,
-			);
-			if (!request) {
-				return null;
-			}
-			built = {
-				request,
-				bodyText: request.body ? JSON.stringify(request.body) : undefined,
-			};
-		}
-
-		if (!built) {
-			return null;
-		}
-
-		upstreamRequestPath = built.request.path;
-		absoluteUrl = built.request.absoluteUrl;
-		upstreamFallbackPath = built.request.absoluteUrl
-			? undefined
-			: built.request.fallbackPath;
-		upstreamBodyText = built.bodyText;
+	const builtRequest = executeAttemptRequestBuildPlan({
+		plan: buildPlan,
+		initialPath: upstreamRequestPath,
+		initialBodyText: upstreamBodyText,
+		initialTargetPath: options.targetPath,
+		upstreamModel,
+		parsedBody: options.parsedBody,
+		applyModelToPath: providerAdapter.applyModelToPath.bind(providerAdapter),
+		normalizedChatRequest:
+			options.endpointType === "chat" || options.endpointType === "responses"
+				? options.ensureNormalizedChat()
+				: null,
+		normalizedEmbeddingRequest:
+			options.endpointType === "embeddings"
+				? options.ensureNormalizedEmbedding()
+				: null,
+		normalizedImageRequest:
+			options.endpointType === "images"
+				? options.ensureNormalizedImage()
+				: null,
+		isStream: options.isStream,
+		endpointOverrides: metadata.endpoint_overrides,
+	});
+	if (!builtRequest) {
+		return null;
 	}
+	upstreamRequestPath = builtRequest.upstreamRequestPath;
+	upstreamFallbackPath = builtRequest.upstreamFallbackPath;
+	upstreamBodyText = builtRequest.upstreamBodyText;
+	absoluteUrl = builtRequest.absoluteUrl;
 
-	const shouldHandleStreamOptions = shouldHandleOpenAiStreamOptions({
+	const streamPolicy = await applyAttemptStreamOptionsPolicy({
+		channelId: options.channel.id,
 		upstreamProvider,
 		isStream: options.isStream,
 		endpointType: options.endpointType,
 		shouldSkipHeavyBodyParsing: options.shouldSkipHeavyBodyParsing,
+		bodyText: upstreamBodyText,
+		loadStreamOptionsCapability: options.loadStreamOptionsCapability,
 	});
-	let streamOptionsInjected = false;
-	let strippedStreamOptionsBodyText: string | undefined = upstreamBodyText;
-
-	if (shouldHandleStreamOptions) {
-		const capability = await options.loadStreamOptionsCapability(
-			options.channel.id,
-		);
-		if (capability !== "unsupported") {
-			const injected = transformOpenAiStreamOptions(upstreamBodyText, "inject");
-			upstreamBodyText = injected.bodyText;
-			streamOptionsInjected = injected.injected;
-			const stripped = transformOpenAiStreamOptions(upstreamBodyText, "strip");
-			strippedStreamOptionsBodyText = stripped.bodyText;
-		} else {
-			const stripped = transformOpenAiStreamOptions(upstreamBodyText, "strip");
-			upstreamBodyText = stripped.bodyText;
-			strippedStreamOptionsBodyText = stripped.bodyText;
-		}
-	}
+	upstreamBodyText = streamPolicy.bodyText;
 
 	const targetBase = absoluteUrl ?? `${baseUrl}${upstreamRequestPath}`;
 	const target = mergeQuery(
@@ -265,10 +161,10 @@ export async function prepareAttemptRequest(options: {
 		responsePath: upstreamRequestPath,
 		fallbackPath: upstreamFallbackPath,
 		bodyText: upstreamBodyText,
-		streamOptionsHandled: shouldHandleStreamOptions,
-		streamOptionsInjected,
-		strippedBodyText: strippedStreamOptionsBodyText,
-		requestEntryFormatToPersist: customEntry?.requestEntryFormatToPersist,
+		streamOptionsHandled: streamPolicy.streamOptionsHandled,
+		streamOptionsInjected: streamPolicy.streamOptionsInjected,
+		strippedBodyText: streamPolicy.strippedBodyText,
+		requestEntryFormatToPersist: buildPlan.requestEntryFormatToPersist,
 		requestEntryPathToPersist: metadata.request_entry?.path ?? undefined,
 	};
 }

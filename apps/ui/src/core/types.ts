@@ -1,10 +1,5 @@
-export type SiteType =
-	| "new-api"
-	| "done-hub"
-	| "subapi"
-	| "openai"
-	| "anthropic"
-	| "gemini";
+import type { RequestEntryFormat, SiteType } from "../../../shared-core/src";
+export type { RequestEntryFormat, SiteType } from "../../../shared-core/src";
 
 export type SiteCallToken = {
 	id: string;
@@ -315,6 +310,7 @@ export type Settings = {
 	channel_disable_error_codes?: string[];
 	channel_disable_error_threshold?: number;
 	channel_disable_error_code_minutes?: number;
+	site_verification_model_limit?: number;
 	runtime_settings?: RuntimeProxySettings;
 	runtime_config?: RuntimeProxyConfig;
 	pricing_settings?: PricingSettings;
@@ -468,6 +464,7 @@ export type RuntimeProxySettings = {
 	site_task_concurrency: number;
 	site_task_timeout_ms: number;
 	site_task_fallback_enabled: boolean;
+	verification_model_limit: number;
 };
 
 export type RuntimeProxyConfig = RuntimeProxySettings & {
@@ -602,12 +599,6 @@ export type SiteForm = {
 	call_tokens: SiteCallTokenForm[];
 };
 
-export type RequestEntryFormat =
-	| "openai_chat"
-	| "openai_responses"
-	| "anthropic_messages"
-	| "gemini_generate_content";
-
 export type SiteCallTokenForm = {
 	id?: string;
 	name: string;
@@ -646,6 +637,7 @@ export type SettingsForm = {
 	site_task_concurrency: string;
 	site_task_timeout_ms: string;
 	site_task_fallback_enabled: boolean;
+	site_verification_model_limit: string;
 	pricing_sync_enabled: boolean;
 	pricing_sync_schedule_time: string;
 	pricing_sync_sources: string[];
