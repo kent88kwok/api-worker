@@ -251,6 +251,40 @@ canonicalModels.post("/orphans/cleanup", async (c) => {
 	});
 });
 
+canonicalModels.delete("/orphans/:canonicalModel", async (c) => {
+	const canonicalModel = normalizeText(c.req.param("canonicalModel"));
+	if (!canonicalModel) {
+		return jsonError(
+			c,
+			400,
+			"canonical_model_required",
+			"canonical_model_required",
+		);
+	}
+	const target = (await listCanonicalModelCleanupItems(c.env.DB)).find(
+		(item) => item.canonical_model === canonicalModel,
+	);
+	if (!target) {
+		return jsonError(
+			c,
+			404,
+			"cleanup_target_not_found",
+			"cleanup_target_not_found",
+		);
+	}
+	await c.env.DB.prepare("DELETE FROM model_aliases WHERE canonical_model = ?")
+		.bind(target.canonical_model)
+		.run();
+	await c.env.DB.prepare("DELETE FROM model_registry WHERE canonical_model = ?")
+		.bind(target.canonical_model)
+		.run();
+	await triggerBackupAfterDataChange(c.env.DB);
+	return c.json({
+		ok: true,
+		item: target,
+	});
+});
+
 canonicalModels.post("/sync", async (c) => {
 	const result = await syncCanonicalModelAliases(c.env.DB);
 	await triggerBackupAfterDataChange(c.env.DB);

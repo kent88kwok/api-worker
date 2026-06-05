@@ -494,21 +494,18 @@ export const PricingView = ({
 						disabled={isPricingSyncing}
 						onClick={onPricingSync}
 					>
-						<span class="inline-flex min-w-[56px] justify-center">
-							{isPricingSyncing ? "同步中..." : "同步价格"}
-						</span>
+						{isPricingSyncing ? "同步中..." : "同步价格"}
 					</Button>
 					<Button
-						class="h-9 min-w-[112px] justify-center px-4 text-xs"
+						class="h-9 min-w-[136px] justify-center px-4 text-xs"
 						size="sm"
 						variant="ghost"
 						type="button"
 						disabled={isManualPriceCleanupRunning}
 						onClick={onCleanupManualPrices}
+						aria-busy={isManualPriceCleanupRunning}
 					>
-						<span class="inline-flex min-w-[72px] justify-center">
-							{isManualPriceCleanupRunning ? "清理中..." : "清理手动价格"}
-						</span>
+						清理手动价格
 					</Button>
 					<button
 						class={`inline-flex h-9 items-center rounded-full border px-3 text-[11px] leading-none ${syncStatusClass}`}

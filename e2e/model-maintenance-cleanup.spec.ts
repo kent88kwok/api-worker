@@ -3,6 +3,71 @@ import { expect, test } from "@playwright/test";
 test("统一模型页面可清理残留模型且无控制台报错", async ({ page }) => {
 	let cleanupRequestCount = 0;
 	let canonicalListRequestCount = 0;
+	const orphanItems = [
+		{
+			canonical_model: "gpt-5",
+			import_regex: null,
+			created_at: "2026-06-05T00:00:00.000Z",
+			updated_at: "2026-06-05T00:00:00.000Z",
+			replacement_canonical_models: ["openai/gpt-5"],
+		},
+		{
+			canonical_model: "gpt-5.1",
+			import_regex: null,
+			created_at: "2026-06-05T00:00:00.000Z",
+			updated_at: "2026-06-05T00:00:00.000Z",
+			replacement_canonical_models: ["openai/gpt-5.1"],
+		},
+		{
+			canonical_model: "gpt-5.2",
+			import_regex: null,
+			created_at: "2026-06-05T00:00:00.000Z",
+			updated_at: "2026-06-05T00:00:00.000Z",
+			replacement_canonical_models: ["openai/gpt-5.2"],
+		},
+		{
+			canonical_model: "gpt-5.3",
+			import_regex: null,
+			created_at: "2026-06-05T00:00:00.000Z",
+			updated_at: "2026-06-05T00:00:00.000Z",
+			replacement_canonical_models: ["openai/gpt-5.3"],
+		},
+		{
+			canonical_model: "gpt-5.4",
+			import_regex: null,
+			created_at: "2026-06-05T00:00:00.000Z",
+			updated_at: "2026-06-05T00:00:00.000Z",
+			replacement_canonical_models: ["openai/gpt-5.4"],
+		},
+		{
+			canonical_model: "gpt-5.5",
+			import_regex: null,
+			created_at: "2026-06-05T00:00:00.000Z",
+			updated_at: "2026-06-05T00:00:00.000Z",
+			replacement_canonical_models: ["openai/gpt-5.5"],
+		},
+		{
+			canonical_model: "gpt-5.6",
+			import_regex: null,
+			created_at: "2026-06-05T00:00:00.000Z",
+			updated_at: "2026-06-05T00:00:00.000Z",
+			replacement_canonical_models: ["openai/gpt-5.6"],
+		},
+		{
+			canonical_model: "gpt-5.7",
+			import_regex: null,
+			created_at: "2026-06-05T00:00:00.000Z",
+			updated_at: "2026-06-05T00:00:00.000Z",
+			replacement_canonical_models: ["openai/gpt-5.7"],
+		},
+		{
+			canonical_model: "gpt-5.8",
+			import_regex: null,
+			created_at: "2026-06-05T00:00:00.000Z",
+			updated_at: "2026-06-05T00:00:00.000Z",
+			replacement_canonical_models: ["openai/gpt-5.8"],
+		},
+	];
 	const consoleErrors: string[] = [];
 	const pageErrors: string[] = [];
 
@@ -55,41 +120,56 @@ test("统一模型页面可清理残留模型且无控制台报错", async ({ pa
 			status: 200,
 			contentType: "application/json",
 			body: JSON.stringify({
-				total: 1,
-				items: [
-					{
-						canonical_model: "gpt-5",
-						import_regex: null,
-						created_at: "2026-06-05T00:00:00.000Z",
-						updated_at: "2026-06-05T00:00:00.000Z",
-						replacement_canonical_models: ["openai/gpt-5"],
-					},
-				],
+				total: orphanItems.length,
+				items: orphanItems,
 			}),
 		});
 	});
 
 	await page.route(
-		"**/api/canonical-models/orphans/cleanup",
+		"**/api/canonical-models/orphans/*",
 		async (route, request) => {
-			expect(request.method()).toBe("POST");
+			if (request.method() !== "DELETE") {
+				await route.fallback();
+				return;
+			}
+			expect(request.method()).toBe("DELETE");
+			const canonicalModel = decodeURIComponent(
+				request.url().split("/").at(-1) ?? "",
+			);
+			const index = orphanItems.findIndex(
+				(item) => item.canonical_model === canonicalModel,
+			);
+			if (index >= 0) {
+				orphanItems.splice(index, 1);
+			}
 			cleanupRequestCount += 1;
 			await route.fulfill({
 				status: 200,
 				contentType: "application/json",
 				body: JSON.stringify({
 					ok: true,
-					deleted: 1,
-					total: 1,
-					items: [
-						{
-							canonical_model: "gpt-5",
-							import_regex: null,
-							created_at: "2026-06-05T00:00:00.000Z",
-							updated_at: "2026-06-05T00:00:00.000Z",
-							replacement_canonical_models: ["openai/gpt-5"],
-						},
-					],
+					item: { canonical_model: canonicalModel },
+				}),
+			});
+		},
+	);
+
+	await page.route(
+		"**/api/canonical-models/orphans/cleanup",
+		async (route, request) => {
+			expect(request.method()).toBe("POST");
+			cleanupRequestCount += 1;
+			const deleted = orphanItems.length;
+			orphanItems.splice(0, orphanItems.length);
+			await route.fulfill({
+				status: 200,
+				contentType: "application/json",
+				body: JSON.stringify({
+					ok: true,
+					deleted,
+					total: deleted,
+					items: [],
 				}),
 			});
 		},
@@ -104,9 +184,17 @@ test("统一模型页面可清理残留模型且无控制台报错", async ({ pa
 	await expect(
 		page.getByRole("heading", { name: "清理残留模型" }),
 	).toBeVisible();
-	await page.getByRole("button", { name: "确认清理" }).click();
-
+	await expect(page.locator("li").filter({ hasText: "gpt-5.8" })).toHaveCount(
+		1,
+	);
+	await page.getByRole("button", { name: "单独清理" }).first().click();
 	await expect.poll(() => cleanupRequestCount).toBe(1);
+	await expect(
+		page.getByText("当前共有 8 个可清理的残留统一模型"),
+	).toBeVisible();
+	await page.getByRole("button", { name: "全部清理" }).click();
+
+	await expect.poll(() => cleanupRequestCount).toBe(2);
 	await expect(pageErrors, `页面异常: ${pageErrors.join("\n")}`).toEqual([]);
 	await expect(
 		consoleErrors,
@@ -117,6 +205,80 @@ test("统一模型页面可清理残留模型且无控制台报错", async ({ pa
 test("价格页面可清理手动价格且无控制台报错", async ({ page }) => {
 	let cleanupRequestCount = 0;
 	let pricingListRequestCount = 0;
+	const orphanPrices = [
+		{
+			id: "manual-1",
+			provider: "manual",
+			canonical_model: null,
+			model_pattern: "gpt-legacy-1",
+			model_name: "gpt-legacy-1",
+			updated_at: "2026-06-05T00:00:00.000Z",
+		},
+		{
+			id: "manual-2",
+			provider: "manual",
+			canonical_model: null,
+			model_pattern: "gpt-legacy-2",
+			model_name: "gpt-legacy-2",
+			updated_at: "2026-06-05T00:00:00.000Z",
+		},
+		{
+			id: "manual-3",
+			provider: "manual",
+			canonical_model: null,
+			model_pattern: "gpt-legacy-3",
+			model_name: "gpt-legacy-3",
+			updated_at: "2026-06-05T00:00:00.000Z",
+		},
+		{
+			id: "manual-4",
+			provider: "manual",
+			canonical_model: null,
+			model_pattern: "gpt-legacy-4",
+			model_name: "gpt-legacy-4",
+			updated_at: "2026-06-05T00:00:00.000Z",
+		},
+		{
+			id: "manual-5",
+			provider: "manual",
+			canonical_model: null,
+			model_pattern: "gpt-legacy-5",
+			model_name: "gpt-legacy-5",
+			updated_at: "2026-06-05T00:00:00.000Z",
+		},
+		{
+			id: "manual-6",
+			provider: "manual",
+			canonical_model: null,
+			model_pattern: "gpt-legacy-6",
+			model_name: "gpt-legacy-6",
+			updated_at: "2026-06-05T00:00:00.000Z",
+		},
+		{
+			id: "manual-7",
+			provider: "manual",
+			canonical_model: null,
+			model_pattern: "gpt-legacy-7",
+			model_name: "gpt-legacy-7",
+			updated_at: "2026-06-05T00:00:00.000Z",
+		},
+		{
+			id: "manual-8",
+			provider: "manual",
+			canonical_model: null,
+			model_pattern: "gpt-legacy-8",
+			model_name: "gpt-legacy-8",
+			updated_at: "2026-06-05T00:00:00.000Z",
+		},
+		{
+			id: "manual-9",
+			provider: "manual",
+			canonical_model: null,
+			model_pattern: "gpt-legacy-9",
+			model_name: "gpt-legacy-9",
+			updated_at: "2026-06-05T00:00:00.000Z",
+		},
+	];
 	const consoleErrors: string[] = [];
 	const pageErrors: string[] = [];
 
@@ -256,17 +418,33 @@ test("价格页面可清理手动价格且无控制台报错", async ({ page }) 
 				status: 200,
 				contentType: "application/json",
 				body: JSON.stringify({
-					total: 1,
-					items: [
-						{
-							id: "manual-1",
-							provider: "manual",
-							canonical_model: null,
-							model_pattern: "gpt-legacy-*",
-							model_name: "gpt-legacy-*",
-							updated_at: "2026-06-05T00:00:00.000Z",
-						},
-					],
+					total: orphanPrices.length,
+					items: orphanPrices,
+				}),
+			});
+		},
+	);
+
+	await page.route(
+		"**/api/pricing/models/manual-orphans/*",
+		async (route, request) => {
+			if (request.method() !== "DELETE") {
+				await route.fallback();
+				return;
+			}
+			expect(request.method()).toBe("DELETE");
+			const id = decodeURIComponent(request.url().split("/").at(-1) ?? "");
+			const index = orphanPrices.findIndex((item) => item.id === id);
+			if (index >= 0) {
+				orphanPrices.splice(index, 1);
+			}
+			cleanupRequestCount += 1;
+			await route.fulfill({
+				status: 200,
+				contentType: "application/json",
+				body: JSON.stringify({
+					ok: true,
+					item: { id },
 				}),
 			});
 		},
@@ -277,23 +455,16 @@ test("价格页面可清理手动价格且无控制台报错", async ({ page }) 
 		async (route, request) => {
 			expect(request.method()).toBe("POST");
 			cleanupRequestCount += 1;
+			const deleted = orphanPrices.length;
+			orphanPrices.splice(0, orphanPrices.length);
 			await route.fulfill({
 				status: 200,
 				contentType: "application/json",
 				body: JSON.stringify({
 					ok: true,
-					deleted: 1,
-					total: 1,
-					items: [
-						{
-							id: "manual-1",
-							provider: "manual",
-							canonical_model: null,
-							model_pattern: "gpt-legacy-*",
-							model_name: "gpt-legacy-*",
-							updated_at: "2026-06-05T00:00:00.000Z",
-						},
-					],
+					deleted,
+					total: deleted,
+					items: [],
 				}),
 			});
 		},
@@ -308,9 +479,13 @@ test("价格页面可清理手动价格且无控制台报错", async ({ page }) 
 	await expect(
 		page.getByRole("heading", { name: "清理手动价格" }),
 	).toBeVisible();
-	await page.getByRole("button", { name: "确认清理" }).click();
-
+	await expect(page.getByText("manual/gpt-legacy-9")).toHaveCount(1);
+	await page.getByRole("button", { name: "单独清理" }).first().click();
 	await expect.poll(() => cleanupRequestCount).toBe(1);
+	await expect(page.getByText("当前共有 8 条可清理的手动价格")).toBeVisible();
+	await page.getByRole("button", { name: "全部清理" }).click();
+
+	await expect.poll(() => cleanupRequestCount).toBe(2);
 	await expect(pageErrors, `页面异常: ${pageErrors.join("\n")}`).toEqual([]);
 	await expect(
 		consoleErrors,

@@ -128,6 +128,30 @@ pricing.post("/models/manual-orphans/cleanup", async (c) => {
 	});
 });
 
+pricing.delete("/models/manual-orphans/:id", async (c) => {
+	const id = String(c.req.param("id") ?? "").trim();
+	if (!id) {
+		return jsonError(c, 400, "price_id_required", "price_id_required");
+	}
+	const target = (await listManualPriceCleanupItems(c.env.DB)).find(
+		(item) => item.id === id,
+	);
+	if (!target) {
+		return jsonError(
+			c,
+			404,
+			"cleanup_target_not_found",
+			"cleanup_target_not_found",
+		);
+	}
+	await deleteModelPrice(c.env.DB, target.id);
+	await triggerBackupAfterDataChange(c.env.DB);
+	return c.json({
+		ok: true,
+		item: target,
+	});
+});
+
 pricing.post("/models", async (c) => {
 	const body = await c.req.json().catch(() => null);
 	if (!body?.model_pattern) {

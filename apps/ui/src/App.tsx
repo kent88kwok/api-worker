@@ -187,6 +187,16 @@ const persistCanonicalModelSyncResult = (
 type ConfirmState = {
 	title: string;
 	message: string;
+	previewItems?: Array<{
+		id: string;
+		title: string;
+		detail?: string;
+		actionLabel?: string;
+		actionKey?: string;
+		onAction?: () => Promise<void> | void;
+	}>;
+	previewSummary?: string;
+	previewQuestion?: string;
 	confirmLabel?: string;
 	tone?: NoticeTone;
 	onConfirm: () => Promise<void> | void;
@@ -213,26 +223,6 @@ type EditableBackupSettings = Pick<
 
 const buildActionKey = (scope: string, id?: string) =>
 	id ? `${scope}:${id}` : scope;
-
-const buildPreviewMessage = (
-	title: string,
-	lines: string[],
-	total: number,
-): string => {
-	if (total <= 0) {
-		return `当前没有可${title}的项目。`;
-	}
-	const previewLines = lines.slice(0, 8);
-	const remaining = total - previewLines.length;
-	return [
-		`本次将${title} ${total} 项：`,
-		...previewLines,
-		remaining > 0 ? `以及另外 ${remaining} 项。` : "",
-		"确认继续吗？",
-	]
-		.filter(Boolean)
-		.join("\n");
-};
 
 const siteTaskKinds = [
 	"checkin",
@@ -3275,6 +3265,87 @@ const App = () => {
 		}
 		startAction(previewActionKey);
 		try {
+			const openManualPriceCleanupConfirm = (
+				preview: ManualPriceCleanupPreview,
+			) => {
+				openConfirm({
+					title: "清理手动价格",
+					message: "这些记录不会命中任何模型，继续后会被真正删除。",
+					previewSummary: `当前共有 ${preview.total} 条可清理的手动价格`,
+					previewItems: preview.items.map((item) => ({
+						id: item.id,
+						title: `${item.provider}/${item.model_pattern}`,
+						detail: "当前没有命中任何模型",
+						actionLabel: "单独清理",
+						actionKey: buildActionKey("pricing:cleanup-manual:item", item.id),
+						onAction: async () => {
+							const itemActionKey = buildActionKey(
+								"pricing:cleanup-manual:item",
+								item.id,
+							);
+							if (isActionPending(itemActionKey)) {
+								return;
+							}
+							startAction(itemActionKey);
+							try {
+								await apiFetch(
+									`/api/pricing/models/manual-orphans/${encodeURIComponent(item.id)}`,
+									{
+										method: "DELETE",
+									},
+								);
+								await loadPricingModels();
+								const nextPreview = await apiFetch<ManualPriceCleanupPreview>(
+									"/api/pricing/models/manual-orphans/preview",
+								);
+								if (nextPreview.total <= 0) {
+									setConfirmState(null);
+									pushNotice("success", "已清理最后一条手动价格");
+									return;
+								}
+								openManualPriceCleanupConfirm(nextPreview);
+								pushNotice(
+									"success",
+									`已清理手动价格：${item.provider}/${item.model_pattern}`,
+								);
+							} catch (error) {
+								pushNotice("error", (error as Error).message);
+							} finally {
+								endAction(itemActionKey);
+							}
+						},
+					})),
+					previewQuestion: "确认全部清理吗？",
+					confirmLabel: "全部清理",
+					tone: "error",
+					onConfirm: async () => {
+						const cleanupActionKey = buildActionKey("pricing:cleanup-manual");
+						if (isActionPending(cleanupActionKey)) {
+							return;
+						}
+						startAction(cleanupActionKey);
+						try {
+							const result = await apiFetch<
+								ManualPriceCleanupPreview & {
+									ok: boolean;
+									deleted: number;
+								}
+							>("/api/pricing/models/manual-orphans/cleanup", {
+								method: "POST",
+							});
+							await loadPricingModels();
+							pushNotice(
+								"success",
+								`已清理 ${result.deleted} 条没有模型命中的手动价格`,
+							);
+						} catch (error) {
+							pushNotice("error", (error as Error).message);
+						} finally {
+							endAction(cleanupActionKey);
+						}
+					},
+				});
+			};
 			const preview = await apiFetch<ManualPriceCleanupPreview>(
 				"/api/pricing/models/manual-orphans/preview",
 			);
@@ -3282,44 +3353,7 @@ const App = () => {
 				pushNotice("info", "当前没有可清理的手动价格");
 				return;
 			}
-			openConfirm({
-				title: "清理手动价格",
-				message: buildPreviewMessage(
-					"清理",
-					preview.items.map(
-						(item) => `- ${item.provider}/${item.model_pattern}`,
-					),
-					preview.total,
-				),
-				confirmLabel: "确认清理",
-				tone: "error",
-				onConfirm: async () => {
-					const cleanupActionKey = buildActionKey("pricing:cleanup-manual");
-					if (isActionPending(cleanupActionKey)) {
-						return;
-					}
-					startAction(cleanupActionKey);
-					try {
-						const result = await apiFetch<
-							ManualPriceCleanupPreview & {
-								ok: boolean;
-								deleted: number;
-							}
-						>("/api/pricing/models/manual-orphans/cleanup", {
-							method: "POST",
-						});
-						await loadPricingModels();
-						pushNotice(
-							"success",
-							`已清理 ${result.deleted} 条没有模型命中的手动价格`,
-						);
-					} catch (error) {
-						pushNotice("error", (error as Error).message);
-					} finally {
-						endAction(cleanupActionKey);
-					}
-				},
-			});
+			openManualPriceCleanupConfirm(preview);
 		} catch (error) {
 			pushNotice("error", (error as Error).message);
 		} finally {
@@ -3446,6 +3480,88 @@ const App = () => {
 		}
 		startAction(previewActionKey);
 		try {
+			const openCanonicalModelCleanupConfirm = (
+				preview: CanonicalModelCleanupPreview,
+			) => {
+				openConfirm({
+					title: "清理残留模型",
+					message: "这些统一模型已经被新的精确别名接管，继续后会被真正删除。",
+					previewSummary: `当前共有 ${preview.total} 个可清理的残留统一模型`,
+					previewItems: preview.items.map((item) => ({
+						id: item.canonical_model,
+						title: item.canonical_model,
+						detail: `已被 ${item.replacement_canonical_models.join("、")} 接管`,
+						actionLabel: "单独清理",
+						actionKey: buildActionKey(
+							"canonical-model:cleanup:item",
+							item.canonical_model,
+						),
+						onAction: async () => {
+							const itemActionKey = buildActionKey(
+								"canonical-model:cleanup:item",
+								item.canonical_model,
+							);
+							if (isActionPending(itemActionKey)) {
+								return;
+							}
+							startAction(itemActionKey);
+							try {
+								await apiFetch(
+									`/api/canonical-models/orphans/${encodeURIComponent(item.canonical_model)}`,
+									{
+										method: "DELETE",
+									},
+								);
+								await loadCanonicalModels();
+								const nextPreview =
+									await apiFetch<CanonicalModelCleanupPreview>(
+										"/api/canonical-models/orphans/preview",
+									);
+								if (nextPreview.total <= 0) {
+									setConfirmState(null);
+									pushNotice("success", "已清理最后一个残留统一模型");
+									return;
+								}
+								openCanonicalModelCleanupConfirm(nextPreview);
+								pushNotice(
+									"success",
+									`已清理残留统一模型：${item.canonical_model}`,
+								);
+							} catch (error) {
+								pushNotice("error", (error as Error).message);
+							} finally {
+								endAction(itemActionKey);
+							}
+						},
+					})),
+					previewQuestion: "确认全部清理吗？",
+					confirmLabel: "全部清理",
+					tone: "error",
+					onConfirm: async () => {
+						const cleanupActionKey = buildActionKey("canonical-model:cleanup");
+						if (isActionPending(cleanupActionKey)) {
+							return;
+						}
+						startAction(cleanupActionKey);
+						try {
+							const result = await apiFetch<
+								CanonicalModelCleanupPreview & {
+									ok: boolean;
+									deleted: number;
+								}
+							>("/api/canonical-models/orphans/cleanup", {
+								method: "POST",
+							});
+							await loadCanonicalModels();
+							pushNotice("success", `已清理 ${result.deleted} 个残留统一模型`);
+						} catch (error) {
+							pushNotice("error", (error as Error).message);
+						} finally {
+							endAction(cleanupActionKey);
+						}
+					},
+				});
+			};
 			const preview = await apiFetch<CanonicalModelCleanupPreview>(
 				"/api/canonical-models/orphans/preview",
 			);
@@ -3453,42 +3569,7 @@ const App = () => {
 				pushNotice("info", "当前没有可清理的残留模型");
 				return;
 			}
-			openConfirm({
-				title: "清理残留模型",
-				message: buildPreviewMessage(
-					"清理",
-					preview.items.map((item) => {
-						const replacements = item.replacement_canonical_models.join("、");
-						return `- ${item.canonical_model}，已被 ${replacements} 接管`;
-					}),
-					preview.total,
-				),
-				confirmLabel: "确认清理",
-				tone: "error",
-				onConfirm: async () => {
-					const cleanupActionKey = buildActionKey("canonical-model:cleanup");
-					if (isActionPending(cleanupActionKey)) {
-						return;
-					}
-					startAction(cleanupActionKey);
-					try {
-						const result = await apiFetch<
-							CanonicalModelCleanupPreview & {
-								ok: boolean;
-								deleted: number;
-							}
-						>("/api/canonical-models/orphans/cleanup", {
-							method: "POST",
-						});
-						await loadCanonicalModels();
-						pushNotice("success", `已清理 ${result.deleted} 个残留统一模型`);
-					} catch (error) {
-						pushNotice("error", (error as Error).message);
-					} finally {
-						endAction(cleanupActionKey);
-					}
-				},
-			});
+			openCanonicalModelCleanupConfirm(preview);
 		} catch (error) {
 			pushNotice("error", (error as Error).message);
 		} finally {
@@ -4139,14 +4220,14 @@ const App = () => {
 					<DialogContent
 						aria-labelledby="confirm-title"
 						aria-modal="true"
-						class="max-w-md"
+						class={confirmState.previewItems ? "max-w-2xl" : "max-w-md"}
 					>
 						<DialogHeader>
-							<div>
+							<div class="min-w-0 flex-1">
 								<DialogTitle id="confirm-title">
 									{confirmState.title}
 								</DialogTitle>
-								<DialogDescription class="whitespace-pre-line break-words leading-5">
+								<DialogDescription class="break-words leading-5">
 									{confirmState.message}
 								</DialogDescription>
 							</div>
@@ -4154,6 +4235,60 @@ const App = () => {
 								关闭
 							</Button>
 						</DialogHeader>
+						{confirmState.previewItems ? (
+							<div class="mt-4 w-full rounded-2xl border border-white/60 bg-white/75 px-4 py-4">
+								{confirmState.previewSummary ? (
+									<p class="text-sm font-semibold text-[color:var(--app-ink)]">
+										{confirmState.previewSummary}
+									</p>
+								) : null}
+								<ul class="mt-3 max-h-[50vh] w-full space-y-2 overflow-y-auto pr-1">
+									{confirmState.previewItems.map((item) =>
+										(() => {
+											const isItemActionPending = item.actionKey
+												? isActionPending(item.actionKey)
+												: false;
+											return (
+												<li
+													class="flex flex-col gap-3 rounded-xl border border-white/60 bg-white/85 px-3 py-3 sm:flex-row sm:items-start sm:justify-between"
+													key={item.id}
+												>
+													<div class="min-w-0 flex-1">
+														<p class="break-words text-sm font-semibold text-[color:var(--app-ink)]">
+															{item.title}
+														</p>
+														{item.detail ? (
+															<p class="mt-1 break-words text-xs text-[color:var(--app-ink-muted)]">
+																{item.detail}
+															</p>
+														) : null}
+													</div>
+													{item.onAction ? (
+														<Button
+															size="sm"
+															type="button"
+															variant="ghost"
+															class="h-8 shrink-0 px-3 text-[11px]"
+															disabled={isItemActionPending}
+															onClick={() => void item.onAction?.()}
+														>
+															{isItemActionPending
+																? "清理中..."
+																: (item.actionLabel ?? "处理")}
+														</Button>
+													) : null}
+												</li>
+											);
+										})(),
+									)}
+								</ul>
+								{confirmState.previewQuestion ? (
+									<p class="mt-2 text-sm font-medium text-[color:var(--app-ink)]">
+										{confirmState.previewQuestion}
+									</p>
+								) : null}
+							</div>
+						) : null}
 						<DialogFooter>
 							<Button size="sm" type="button" onClick={closeConfirm}>
 								取消

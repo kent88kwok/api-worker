@@ -365,36 +365,31 @@ export const CanonicalModelsView = ({
 						size="sm"
 						type="button"
 						variant="primary"
-						class="h-9 min-w-[112px] justify-center px-4 text-xs"
+						class="h-9 min-w-[136px] justify-center px-4 text-xs"
 						disabled={isSyncing}
 						onClick={() => void onSync()}
 					>
-						<span class="inline-flex min-w-[72px] justify-center">
-							{isSyncing ? "同步中..." : "一键同步别名"}
-						</span>
+						{isSyncing ? "同步中..." : "一键同步别名"}
 					</Button>
 					<Button
 						size="sm"
 						type="button"
 						variant="ghost"
-						class="h-9 min-w-[112px] justify-center px-4 text-xs"
+						class="h-9 min-w-[136px] justify-center px-4 text-xs"
 						disabled={isCleanupRunning}
 						onClick={() => void onCleanupResidualModels()}
+						aria-busy={isCleanupRunning}
 					>
-						<span class="inline-flex min-w-[72px] justify-center">
-							{isCleanupRunning ? "清理中..." : "清理残留模型"}
-						</span>
+						清理残留模型
 					</Button>
 					<Button
 						variant="primary"
 						size="sm"
-						class="h-9 min-w-[112px] justify-center px-4 text-xs"
+						class="h-9 min-w-[136px] justify-center px-4 text-xs"
 						type="button"
 						onClick={openCreate}
 					>
-						<span class="inline-flex min-w-[72px] justify-center">
-							新增统一模型
-						</span>
+						新增统一模型
 					</Button>
 				</div>
 			</div>
