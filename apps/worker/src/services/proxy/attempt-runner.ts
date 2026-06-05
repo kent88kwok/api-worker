@@ -624,18 +624,6 @@ export async function runProxyAttempts(ctx: any): Promise<any> {
 									dispatchStopRetry = true;
 								}
 							} else {
-								if (
-									response.status === 200 &&
-									meta.requestEntryFormatToPersist
-								) {
-									await persistAutomaticRequestEntryFormat({
-										db: c.env.DB,
-										kvHot: c.env.KV_HOT,
-										channel: meta.channel,
-										path: meta.requestEntryPathToPersist,
-										format: meta.requestEntryFormatToPersist,
-									});
-								}
 								recordAttemptLog({
 									attemptIndex: attemptNumber,
 									channelId: meta.channel.id,
@@ -1532,18 +1520,6 @@ export async function runProxyAttempts(ctx: any): Promise<any> {
 						startedAt: attemptStartedAt,
 						endedAt: new Date().toISOString(),
 					});
-					if (
-						response.status === 200 &&
-						preparedAttempt.requestEntryFormatToPersist
-					) {
-						await persistAutomaticRequestEntryFormat({
-							db: c.env.DB,
-							kvHot: c.env.KV_HOT,
-							channel,
-							path: preparedAttempt.requestEntryPathToPersist,
-							format: preparedAttempt.requestEntryFormatToPersist,
-						});
-					}
 					const selectedState = buildSelectedAttemptState({
 						channel,
 						upstreamProvider,

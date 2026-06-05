@@ -16,8 +16,8 @@ describe("request entry attempt order", () => {
 				endpointType: "chat",
 			}),
 		).toEqual([
-			"openai_chat",
 			"openai_responses",
+			"openai_chat",
 			"anthropic_messages",
 			"gemini_generate_content",
 		]);

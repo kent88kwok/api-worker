@@ -285,12 +285,16 @@ describe("pricing sync parser", () => {
 	});
 
 	it("同步没有解析到价格时把该来源标记为失败", async () => {
+		const deletedProviders: unknown[][] = [];
 		const db = {
-			prepare() {
+			prepare(sql: string) {
 				return {
-					bind() {
+					bind(...params: unknown[]) {
 						return {
 							async run() {
+								if (sql.startsWith("DELETE FROM model_prices")) {
+									deletedProviders.push(params);
+								}
 								return { success: true };
 							},
 							async all() {
@@ -317,6 +321,7 @@ describe("pricing sync parser", () => {
 			count: 0,
 			message: "no_prices_found",
 		});
+		expect(deletedProviders).toEqual([["official_sync", "anthropic"]]);
 	});
 
 	it("同步入库前按全局计价币种转换", async () => {

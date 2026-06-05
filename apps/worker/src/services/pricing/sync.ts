@@ -838,6 +838,7 @@ export async function syncModelPrices(
 						(price.input_price_per_1m > 0 || price.output_price_per_1m > 0),
 				);
 			if (prices.length === 0) {
+				await deleteSyncedModelPricesByProvider(db, source);
 				items.push({
 					source,
 					ok: false,

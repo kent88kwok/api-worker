@@ -42,12 +42,9 @@ function buildAutomaticFormatOrder(
 	).filter((format) =>
 		isFormatCompatibleWithEndpointType(format, endpointType),
 	);
-	if (endpointType !== "responses") {
-		return supportedFormats;
-	}
 	return buildAutomaticRequestEntryFormatOrder({
 		formats: supportedFormats,
-		endpointType,
+		endpointType: endpointType === "responses" ? "responses" : "chat",
 	});
 }
 

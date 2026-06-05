@@ -46,6 +46,7 @@ import {
 import type {
 	AdminData,
 	CanonicalModelInput,
+	CanonicalModelCleanupPreview,
 	CanonicalModelItem,
 	CanonicalModelSyncResult,
 	BackupImportMode,
@@ -59,6 +60,7 @@ import type {
 	ModelChannel,
 	ModelPrice,
 	ModelPriceInput,
+	ManualPriceCleanupPreview,
 	ModelStatusUpdate,
 	NoticeMessage,
 	NoticeTone,
@@ -211,6 +213,26 @@ type EditableBackupSettings = Pick<
 
 const buildActionKey = (scope: string, id?: string) =>
 	id ? `${scope}:${id}` : scope;
+
+const buildPreviewMessage = (
+	title: string,
+	lines: string[],
+	total: number,
+): string => {
+	if (total <= 0) {
+		return `当前没有可${title}的项目。`;
+	}
+	const previewLines = lines.slice(0, 8);
+	const remaining = total - previewLines.length;
+	return [
+		`本次将${title} ${total} 项：`,
+		...previewLines,
+		remaining > 0 ? `以及另外 ${remaining} 项。` : "",
+		"确认继续吗？",
+	]
+		.filter(Boolean)
+		.join("\n");
+};
 
 const siteTaskKinds = [
 	"checkin",
@@ -3246,6 +3268,73 @@ const App = () => {
 		startAction,
 	]);
 
+	const handleManualPriceCleanup = useCallback(async () => {
+		const previewActionKey = buildActionKey("pricing:cleanup-manual:preview");
+		if (isActionPending(previewActionKey)) {
+			return;
+		}
+		startAction(previewActionKey);
+		try {
+			const preview = await apiFetch<ManualPriceCleanupPreview>(
+				"/api/pricing/models/manual-orphans/preview",
+			);
+			if (preview.total <= 0) {
+				pushNotice("info", "当前没有可清理的手动价格");
+				return;
+			}
+			openConfirm({
+				title: "清理手动价格",
+				message: buildPreviewMessage(
+					"清理",
+					preview.items.map(
+						(item) => `- ${item.provider}/${item.model_pattern}`,
+					),
+					preview.total,
+				),
+				confirmLabel: "确认清理",
+				tone: "error",
+				onConfirm: async () => {
+					const cleanupActionKey = buildActionKey("pricing:cleanup-manual");
+					if (isActionPending(cleanupActionKey)) {
+						return;
+					}
+					startAction(cleanupActionKey);
+					try {
+						const result = await apiFetch<
+							ManualPriceCleanupPreview & {
+								ok: boolean;
+								deleted: number;
+							}
+						>("/api/pricing/models/manual-orphans/cleanup", {
+							method: "POST",
+						});
+						await loadPricingModels();
+						pushNotice(
+							"success",
+							`已清理 ${result.deleted} 条没有模型命中的手动价格`,
+						);
+					} catch (error) {
+						pushNotice("error", (error as Error).message);
+					} finally {
+						endAction(cleanupActionKey);
+					}
+				},
+			});
+		} catch (error) {
+			pushNotice("error", (error as Error).message);
+		} finally {
+			endAction(previewActionKey);
+		}
+	}, [
+		apiFetch,
+		endAction,
+		isActionPending,
+		loadPricingModels,
+		openConfirm,
+		pushNotice,
+		startAction,
+	]);
+
 	const handlePricingCurrencyChange = useCallback(
 		async (currency: "USD" | "CNY") => {
 			if (currency === pricingCurrency) {
@@ -3346,6 +3435,71 @@ const App = () => {
 		endAction,
 		isActionPending,
 		loadCanonicalModels,
+		pushNotice,
+		startAction,
+	]);
+
+	const handleCanonicalModelCleanup = useCallback(async () => {
+		const previewActionKey = buildActionKey("canonical-model:cleanup:preview");
+		if (isActionPending(previewActionKey)) {
+			return;
+		}
+		startAction(previewActionKey);
+		try {
+			const preview = await apiFetch<CanonicalModelCleanupPreview>(
+				"/api/canonical-models/orphans/preview",
+			);
+			if (preview.total <= 0) {
+				pushNotice("info", "当前没有可清理的残留模型");
+				return;
+			}
+			openConfirm({
+				title: "清理残留模型",
+				message: buildPreviewMessage(
+					"清理",
+					preview.items.map((item) => {
+						const replacements = item.replacement_canonical_models.join("、");
+						return `- ${item.canonical_model}，已被 ${replacements} 接管`;
+					}),
+					preview.total,
+				),
+				confirmLabel: "确认清理",
+				tone: "error",
+				onConfirm: async () => {
+					const cleanupActionKey = buildActionKey("canonical-model:cleanup");
+					if (isActionPending(cleanupActionKey)) {
+						return;
+					}
+					startAction(cleanupActionKey);
+					try {
+						const result = await apiFetch<
+							CanonicalModelCleanupPreview & {
+								ok: boolean;
+								deleted: number;
+							}
+						>("/api/canonical-models/orphans/cleanup", {
+							method: "POST",
+						});
+						await loadCanonicalModels();
+						pushNotice("success", `已清理 ${result.deleted} 个残留统一模型`);
+					} catch (error) {
+						pushNotice("error", (error as Error).message);
+					} finally {
+						endAction(cleanupActionKey);
+					}
+				},
+			});
+		} catch (error) {
+			pushNotice("error", (error as Error).message);
+		} finally {
+			endAction(previewActionKey);
+		}
+	}, [
+		apiFetch,
+		endAction,
+		isActionPending,
+		loadCanonicalModels,
+		openConfirm,
 		pushNotice,
 		startAction,
 	]);
@@ -3687,11 +3841,16 @@ const App = () => {
 						isActionPending(buildActionKey("canonical-model:update"))
 					}
 					isSyncing={isActionPending(buildActionKey("canonical-model:sync"))}
+					isCleanupRunning={
+						isActionPending(buildActionKey("canonical-model:cleanup")) ||
+						isActionPending(buildActionKey("canonical-model:cleanup:preview"))
+					}
 					syncResult={visibleCanonicalModelSyncResult}
 					onCreate={handleCanonicalModelCreate}
 					onUpdate={handleCanonicalModelUpdate}
 					onDelete={requestCanonicalModelDelete}
 					onSync={handleCanonicalModelSync}
+					onCleanupResidualModels={handleCanonicalModelCleanup}
 				/>
 			);
 		}
@@ -3711,11 +3870,16 @@ const App = () => {
 							isActionPending(buildActionKey("pricing:update", price.id)),
 						)
 					}
+					isManualPriceCleanupRunning={
+						isActionPending(buildActionKey("pricing:cleanup-manual")) ||
+						isActionPending(buildActionKey("pricing:cleanup-manual:preview"))
+					}
 					onPricingSync={handlePricingSync}
 					onPricingCurrencyChange={handlePricingCurrencyChange}
 					onPricingCreate={handlePricingCreate}
 					onPricingUpdate={handlePricingUpdate}
 					onPricingDelete={requestPricingDelete}
+					onCleanupManualPrices={handleManualPriceCleanup}
 				/>
 			);
 		}
@@ -3982,7 +4146,9 @@ const App = () => {
 								<DialogTitle id="confirm-title">
 									{confirmState.title}
 								</DialogTitle>
-								<DialogDescription>{confirmState.message}</DialogDescription>
+								<DialogDescription class="whitespace-pre-line break-words leading-5">
+									{confirmState.message}
+								</DialogDescription>
 							</div>
 							<Button size="sm" type="button" onClick={closeConfirm}>
 								关闭

@@ -9,7 +9,6 @@ import { extractModelIds, modelsToJson } from "./channel-models";
 import { parseChannelMetadata, resolveProvider } from "./channel-metadata";
 import { collectVerifiedTokenModelUpdates } from "./site-verification-token-models";
 import { inspectSuccessfulResponse } from "./successful-response";
-import { buildSiteMetadata, type RequestEntryFormat } from "./site-metadata";
 import {
 	type ChannelTokenTestItem,
 	summarizeChannelTokenFailures,
@@ -37,6 +36,7 @@ import {
 	type ProxyRuntimeSettings,
 } from "./settings";
 import { normalizeChatRequest } from "./provider-transform";
+import type { EndpointType } from "./provider-transform";
 import { getProviderAdapter } from "./providers";
 import { buildProviderChatRequest } from "./providers/chat-request";
 import { ensureJsonContentType } from "./providers/common";
@@ -112,8 +112,6 @@ export type SiteVerificationResult = {
 		upstream_status?: number;
 		detail_code?: string;
 		detail_message?: string;
-		request_entry_format?: RequestEntryFormat | null;
-		request_entry_path?: string | null;
 	};
 	checked_at: string;
 };
@@ -255,6 +253,29 @@ function summarizeVerificationDetail(text: string | null): string | null {
 		return null;
 	}
 	return normalized.slice(0, VERIFICATION_ERROR_DETAIL_MAX_LENGTH);
+}
+
+function buildVerificationProbeBody(
+	requestEndpointType: EndpointType,
+	model: string | null,
+): Record<string, unknown> {
+	if (requestEndpointType === "responses") {
+		return {
+			model,
+			input: MINIMAL_PROBE_PROMPT,
+			max_tokens: MINIMAL_PROBE_MAX_TOKENS,
+			max_output_tokens: MINIMAL_PROBE_MAX_TOKENS,
+			temperature: 0,
+			stream: false,
+		};
+	}
+	return {
+		model,
+		messages: [{ role: "user", content: MINIMAL_PROBE_PROMPT }],
+		max_tokens: MINIMAL_PROBE_MAX_TOKENS,
+		temperature: 0,
+		stream: false,
+	};
 }
 
 async function readVerificationFailureDetail(
@@ -674,61 +695,6 @@ export async function verifySiteChannel(options: {
 		};
 	}
 
-	const downstreamBody = {
-		model: selectedModel,
-		messages: [{ role: "user", content: MINIMAL_PROBE_PROMPT }],
-		max_tokens: MINIMAL_PROBE_MAX_TOKENS,
-		temperature: 0,
-		stream: false,
-	};
-	const normalized = normalizeChatRequest(
-		"openai",
-		"chat",
-		downstreamBody as unknown as Record<string, unknown>,
-		selectedModel,
-		false,
-	);
-	if (!normalized) {
-		service.status = "fail";
-		service.code = "service_request_build_failed";
-		service.message = "无法构造最小服务验证请求。";
-		if (channel.status === "disabled") {
-			recovery.status = "fail";
-			recovery.code = "service_request_build_failed";
-			recovery.message = "无法构造恢复验证请求。";
-		}
-		const summarized = summarizeVerdict(channel.status, {
-			connectivity,
-			capability,
-			service,
-			recovery,
-		});
-		return {
-			site_id: channel.id,
-			site_name: channel.name,
-			mode,
-			verdict: summarized.verdict,
-			message: summarized.message,
-			suggested_action: deriveSuggestedAction({
-				connectivity,
-				capability,
-				service,
-				recovery,
-			}),
-			stages: { connectivity, capability, service, recovery },
-			selected_model: selectedModel,
-			selected_token: {
-				id: selectedToken.id,
-				name: selectedToken.name,
-			},
-			discovered_models: modelSelection.all,
-			token_results: tokenResults,
-			token_summary: tokenSummary,
-			trace,
-			checked_at: checkedAt,
-		};
-	}
-
 	for (const candidateModel of buildVerificationModelAttemptOrder(
 		selectedModel,
 		modelSelection.all,
@@ -772,16 +738,44 @@ export async function verifySiteChannel(options: {
 				entry: metadata.request_entry,
 				endpointType: "chat",
 			})) {
+				const requestEndpointType = resolveEndpointTypeForRequestEntryFormat(
+					requestFormat,
+					"chat",
+				);
 				const requestProvider = resolveUpstreamProviderForRequestEntryFormat(
 					requestFormat,
 					provider,
 				);
 				selectedRequestModel = requestModel;
+				const downstreamBody = buildVerificationProbeBody(
+					requestEndpointType,
+					selectedModel,
+				);
+				const normalized = normalizeChatRequest(
+					"openai",
+					requestEndpointType,
+					downstreamBody,
+					selectedModel,
+					false,
+				);
+				if (!normalized) {
+					service.status = "fail";
+					service.code = "service_request_build_failed";
+					service.message = "无法构造最小服务验证请求。";
+					stopVerification = !shouldContinueAfterFailure(
+						service.code,
+						service.message,
+					);
+					if (stopVerification) {
+						break;
+					}
+					continue;
+				}
 				const request = buildProviderChatRequest(
 					requestProvider,
 					normalized,
 					requestModel,
-					resolveEndpointTypeForRequestEntryFormat(requestFormat, "chat"),
+					requestEndpointType,
 					false,
 					metadata.endpoint_overrides,
 				);
@@ -815,10 +809,11 @@ export async function verifySiteChannel(options: {
 				ensureJsonContentType(headers);
 				const startedAt = Date.now();
 				try {
+					const requestBodyText = JSON.stringify(request.body);
 					const response = await fetcher(target, {
 						method: "POST",
 						headers,
-						body: JSON.stringify(request.body),
+						body: requestBodyText,
 					});
 					const successInspection = response.ok
 						? await inspectSuccessfulResponse(response, {
@@ -841,10 +836,6 @@ export async function verifySiteChannel(options: {
 										.filter(Boolean)
 										.join(" | "),
 								) ?? `HTTP ${response.status}`),
-						request_entry_format: response.ok ? requestFormat : undefined,
-						request_entry_path: response.ok
-							? metadata.request_entry.path
-							: undefined,
 					};
 					if (response.status === 401 || response.status === 403) {
 						connectivity.status = "fail";
@@ -988,22 +979,14 @@ export async function persistSiteVerificationResult(options: {
 		channel.metadata_json,
 		buildSummarySnapshot(result),
 	);
-	const requestEntryMetadataJson = result.trace.request_entry_format
-		? buildSiteMetadata(summaryMetadataJson, {
-				request_entry: {
-					path: result.trace.request_entry_path,
-					format: result.trace.request_entry_format,
-				},
-			})
-		: summaryMetadataJson;
 	const metadataJson =
 		result.discovered_models.length > 0
 			? stageNewlyDiscoveredModels(
-					requestEntryMetadataJson,
+					summaryMetadataJson,
 					extractModelIds(channel),
 					result.discovered_models,
 				)
-			: requestEntryMetadataJson;
+			: summaryMetadataJson;
 	const updatedAt = nowIso();
 	await db
 		.prepare(

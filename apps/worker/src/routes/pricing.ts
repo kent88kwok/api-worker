@@ -1,7 +1,10 @@
 import { Hono } from "hono";
 import type { AppEnv } from "../env";
 import { triggerBackupAfterDataChange } from "../services/backup-auto-sync";
+import { extractModels } from "../services/channel-models";
+import { listChannels } from "../services/channel-repo";
 import { fetchUsdCnyRate } from "../services/pricing/exchange-rate";
+import { planOrphanManualPrices } from "../services/pricing/maintenance";
 import {
 	deleteModelPrice,
 	deleteBuiltinModelPrices,
@@ -41,9 +44,88 @@ function hasPriceFieldPatch(body: Record<string, unknown>): boolean {
 	return priceFieldKeys.some((key) => body[key] !== undefined);
 }
 
+async function listKnownModelNames(
+	db: AppEnv["Bindings"]["DB"],
+): Promise<string[]> {
+	const channels = await listChannels(db, {
+		orderBy: "created_at",
+		order: "DESC",
+	});
+	const knownModels = new Set<string>();
+	for (const channel of channels) {
+		for (const entry of extractModels(channel)) {
+			knownModels.add(entry.id);
+			for (const rawId of entry.rawIds ?? []) {
+				if (rawId.trim()) {
+					knownModels.add(rawId.trim());
+				}
+			}
+		}
+	}
+	const capabilityRows = await db
+		.prepare(
+			[
+				"SELECT model, canonical_model FROM channel_model_capabilities",
+				"WHERE (model IS NOT NULL AND TRIM(model) != '')",
+				"OR (canonical_model IS NOT NULL AND TRIM(canonical_model) != '')",
+			].join(" "),
+		)
+		.all<{
+			model: string | null;
+			canonical_model: string | null;
+		}>();
+	for (const row of capabilityRows.results ?? []) {
+		const model = String(row.model ?? "").trim();
+		const canonicalModel = String(row.canonical_model ?? "").trim();
+		if (model) {
+			knownModels.add(model);
+		}
+		if (canonicalModel) {
+			knownModels.add(canonicalModel);
+		}
+	}
+	return Array.from(knownModels).sort((left, right) =>
+		left.localeCompare(right),
+	);
+}
+
+async function listManualPriceCleanupItems(db: AppEnv["Bindings"]["DB"]) {
+	const [prices, knownModels] = await Promise.all([
+		listModelPrices(db),
+		listKnownModelNames(db),
+	]);
+	return planOrphanManualPrices({
+		prices,
+		knownModels,
+	});
+}
+
 pricing.get("/models", async (c) => {
 	const prices = await listModelPrices(c.env.DB);
 	return c.json({ prices });
+});
+
+pricing.get("/models/manual-orphans/preview", async (c) => {
+	const items = await listManualPriceCleanupItems(c.env.DB);
+	return c.json({
+		total: items.length,
+		items,
+	});
+});
+
+pricing.post("/models/manual-orphans/cleanup", async (c) => {
+	const items = await listManualPriceCleanupItems(c.env.DB);
+	for (const item of items) {
+		await deleteModelPrice(c.env.DB, item.id);
+	}
+	if (items.length > 0) {
+		await triggerBackupAfterDataChange(c.env.DB);
+	}
+	return c.json({
+		ok: true,
+		deleted: items.length,
+		items,
+	});
 });
 
 pricing.post("/models", async (c) => {

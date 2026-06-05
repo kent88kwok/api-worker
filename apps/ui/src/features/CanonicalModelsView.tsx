@@ -38,6 +38,7 @@ type CanonicalModelsViewProps = {
 	items: CanonicalModelItem[];
 	isSaving: boolean;
 	isSyncing: boolean;
+	isCleanupRunning: boolean;
 	syncResult: CanonicalModelSyncResult | null;
 	onCreate: (payload: CanonicalModelInput) => Promise<void> | void;
 	onUpdate: (
@@ -46,6 +47,7 @@ type CanonicalModelsViewProps = {
 	) => Promise<void> | void;
 	onDelete: (item: CanonicalModelItem) => void;
 	onSync: () => Promise<void> | void;
+	onCleanupResidualModels: () => Promise<void> | void;
 };
 
 type FormState = {
@@ -129,11 +131,13 @@ export const CanonicalModelsView = ({
 	items,
 	isSaving,
 	isSyncing,
+	isCleanupRunning,
 	syncResult,
 	onCreate,
 	onUpdate,
 	onDelete,
 	onSync,
+	onCleanupResidualModels,
 }: CanonicalModelsViewProps) => {
 	const [searchText, setSearchText] = useState("");
 	const [onlyWithRegex, setOnlyWithRegex] = useState(false);
@@ -361,18 +365,36 @@ export const CanonicalModelsView = ({
 						size="sm"
 						type="button"
 						variant="primary"
+						class="h-9 min-w-[112px] justify-center px-4 text-xs"
 						disabled={isSyncing}
 						onClick={() => void onSync()}
 					>
-						{isSyncing ? "同步中..." : "一键同步别名"}
+						<span class="inline-flex min-w-[72px] justify-center">
+							{isSyncing ? "同步中..." : "一键同步别名"}
+						</span>
+					</Button>
+					<Button
+						size="sm"
+						type="button"
+						variant="ghost"
+						class="h-9 min-w-[112px] justify-center px-4 text-xs"
+						disabled={isCleanupRunning}
+						onClick={() => void onCleanupResidualModels()}
+					>
+						<span class="inline-flex min-w-[72px] justify-center">
+							{isCleanupRunning ? "清理中..." : "清理残留模型"}
+						</span>
 					</Button>
 					<Button
 						variant="primary"
 						size="sm"
+						class="h-9 min-w-[112px] justify-center px-4 text-xs"
 						type="button"
 						onClick={openCreate}
 					>
-						新增统一模型
+						<span class="inline-flex min-w-[72px] justify-center">
+							新增统一模型
+						</span>
 					</Button>
 				</div>
 			</div>

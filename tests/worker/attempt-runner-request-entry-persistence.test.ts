@@ -225,28 +225,16 @@ function createRunnerContext(options?: {
 }
 
 describe("attempt runner request entry persistence", () => {
-	it("自动请求入口成功后会等待并回写明确请求格式", async () => {
+	it("自动请求入口成功后不会回写明确请求格式", async () => {
 		const persistedPayloads: Record<string, unknown>[] = [];
-		let persistFinished = false;
 		const ctx = createRunnerContext({
 			persist: async (payload) => {
 				persistedPayloads.push(payload);
-				await new Promise((resolve) => setTimeout(resolve, 0));
-				persistFinished = true;
 			},
 		});
 
 		await runProxyAttempts(ctx);
 
-		expect(persistedPayloads).toEqual([
-			{
-				db: ctx.c.env.DB,
-				kvHot: ctx.c.env.KV_HOT,
-				channel: ctx.attemptPlan[0].channel,
-				path: "/codex",
-				format: "openai_chat",
-			},
-		]);
-		expect(persistFinished).toBe(true);
+		expect(persistedPayloads).toEqual([]);
 	});
 });

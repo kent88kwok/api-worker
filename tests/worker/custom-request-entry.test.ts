@@ -30,7 +30,7 @@ describe("custom request entry", () => {
 		expect(entry).toEqual({ path: "/codex", upstreamProvider: "openai" });
 	});
 
-	it("自动入口会按当前 responses 请求解析为 openai_responses", () => {
+	it("自动入口会按当前 responses 请求解析为 openai_responses，但不再持久化格式", () => {
 		const entry = applyCustomRequestEntry({
 			siteType: "openai",
 			entry: {
@@ -44,7 +44,6 @@ describe("custom request entry", () => {
 		expect(entry).toEqual({
 			path: "/codex",
 			upstreamProvider: "openai",
-			requestEntryFormatToPersist: "openai_responses",
 		});
 	});
 
@@ -72,6 +71,23 @@ describe("custom request entry", () => {
 			downstreamProvider: "openai",
 			endpointType: "chat",
 			formatOverride: "openai_responses",
+		});
+
+		expect(entry).toEqual({
+			path: "/codex",
+			upstreamProvider: "openai",
+		});
+	});
+
+	it("OpenAI 自动格式默认会先按 responses 入口处理 chat 请求", () => {
+		const entry = applyCustomRequestEntry({
+			siteType: "openai",
+			entry: {
+				path: "/codex",
+				format: null,
+			},
+			downstreamProvider: "openai",
+			endpointType: "chat",
 		});
 
 		expect(entry).toEqual({

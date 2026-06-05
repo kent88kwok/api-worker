@@ -369,6 +369,20 @@ export type PricingSyncResult = {
 	items: PricingSyncItem[];
 };
 
+export type ManualPriceCleanupItem = {
+	id: string;
+	provider: string;
+	canonical_model: string | null;
+	model_pattern: string;
+	model_name: string;
+	updated_at: string;
+};
+
+export type ManualPriceCleanupPreview = {
+	total: number;
+	items: ManualPriceCleanupItem[];
+};
+
 export type PricingSettings = {
 	sync_enabled: boolean;
 	sync_schedule_time: string;
@@ -557,6 +571,19 @@ export type CanonicalModelSyncResult = {
 	conflicts: CanonicalModelSyncConflict[];
 	invalid_rules: CanonicalModelSyncInvalidRule[];
 	imported_items: CanonicalModelSyncImportedItem[];
+};
+
+export type CanonicalModelCleanupItem = {
+	canonical_model: string;
+	import_regex: string | null;
+	created_at: string;
+	updated_at: string;
+	replacement_canonical_models: string[];
+};
+
+export type CanonicalModelCleanupPreview = {
+	total: number;
+	items: CanonicalModelCleanupItem[];
 };
 
 export type AdminData = {

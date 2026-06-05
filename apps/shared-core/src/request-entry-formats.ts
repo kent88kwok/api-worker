@@ -20,7 +20,7 @@ const requestEntryFormatDescriptors: RequestEntryFormatDescriptor[] = [
 		requestEndpointType: "chat",
 		defaultPath: "/v1/chat/completions",
 		aliases: ["openai_chat", "chat", "chat_completions"],
-		automaticPriority: { chat: 10, responses: 20 },
+		automaticPriority: { chat: 20, responses: 20 },
 	},
 	{
 		format: "openai_responses",
@@ -29,7 +29,7 @@ const requestEntryFormatDescriptors: RequestEntryFormatDescriptor[] = [
 		requestEndpointType: "responses",
 		defaultPath: "/v1/responses",
 		aliases: ["openai_responses", "responses"],
-		automaticPriority: { chat: 20, responses: 10 },
+		automaticPriority: { chat: 10, responses: 10 },
 	},
 	{
 		format: "anthropic_messages",

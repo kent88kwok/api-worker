@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
 import {
 	formatChargeByCurrency,
 	formatChargeAmount,
@@ -7,6 +8,8 @@ import {
 	getPriceSourceLabel,
 	getPricingSyncItemTone,
 } from "../../apps/ui/src/features/pricing-display";
+
+const pricingViewSource = readFileSync("apps/ui/src/features/PricingView.tsx", "utf8");
 
 describe("pricing display helpers", () => {
 	it("按同步可信度展示同步价标签", () => {
@@ -65,5 +68,10 @@ describe("pricing display helpers", () => {
 				message: "no_prices_found",
 			}),
 		).toBe("warning");
+	});
+
+	it("提供清理手动价格入口", () => {
+		expect(pricingViewSource).toContain("清理手动价格");
+		expect(pricingViewSource).toContain("onCleanupManualPrices");
 	});
 });

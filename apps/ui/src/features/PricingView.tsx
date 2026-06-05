@@ -44,6 +44,7 @@ type PricingViewProps = {
 	isPricingSyncing: boolean;
 	isPricingCurrencySaving: boolean;
 	isPricingSaving: boolean;
+	isManualPriceCleanupRunning: boolean;
 	onPricingSync: () => void;
 	onPricingCurrencyChange: (currency: "USD" | "CNY") => Promise<void> | void;
 	onPricingCreate: (payload: ModelPriceInput) => Promise<void> | void;
@@ -52,6 +53,7 @@ type PricingViewProps = {
 		patch: Partial<ModelPriceInput>,
 	) => Promise<void> | void;
 	onPricingDelete: (price: ModelPrice) => void;
+	onCleanupManualPrices: () => Promise<void> | void;
 	lastPricingSyncResult?: PricingSyncResult | null;
 };
 
@@ -208,11 +210,13 @@ export const PricingView = ({
 	isPricingSyncing,
 	isPricingCurrencySaving,
 	isPricingSaving,
+	isManualPriceCleanupRunning,
 	onPricingSync,
 	onPricingCurrencyChange,
 	onPricingCreate,
 	onPricingUpdate,
 	onPricingDelete,
+	onCleanupManualPrices,
 	lastPricingSyncResult,
 }: PricingViewProps) => {
 	const pricingCurrencyLabel = getCurrencyDisplayLabel(pricingCurrency);
@@ -490,7 +494,21 @@ export const PricingView = ({
 						disabled={isPricingSyncing}
 						onClick={onPricingSync}
 					>
-						{isPricingSyncing ? "同步中..." : "同步价格"}
+						<span class="inline-flex min-w-[56px] justify-center">
+							{isPricingSyncing ? "同步中..." : "同步价格"}
+						</span>
+					</Button>
+					<Button
+						class="h-9 min-w-[112px] justify-center px-4 text-xs"
+						size="sm"
+						variant="ghost"
+						type="button"
+						disabled={isManualPriceCleanupRunning}
+						onClick={onCleanupManualPrices}
+					>
+						<span class="inline-flex min-w-[72px] justify-center">
+							{isManualPriceCleanupRunning ? "清理中..." : "清理手动价格"}
+						</span>
 					</Button>
 					<button
 						class={`inline-flex h-9 items-center rounded-full border px-3 text-[11px] leading-none ${syncStatusClass}`}

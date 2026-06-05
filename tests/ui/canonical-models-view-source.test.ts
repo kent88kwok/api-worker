@@ -29,4 +29,9 @@ describe("canonical models view source contracts", () => {
 		expect(canonicalModelsViewSource).toContain("max-h-72 flex-col overflow-hidden");
 		expect(canonicalModelsViewSource).toContain("flex-1 overflow-auto");
 	});
+
+	it("提供清理残留模型入口", () => {
+		expect(canonicalModelsViewSource).toContain("清理残留模型");
+		expect(canonicalModelsViewSource).toContain("onCleanupResidualModels");
+	});
 });

@@ -135,12 +135,12 @@ describe("channel routing with effective models", () => {
 					`${item.channel.id}:${item.model}:${item.requestEntryFormat ?? "default"}`,
 			),
 		).toEqual([
-			"channel-a:gpt-5.2-chat-latest:openai_chat",
 			"channel-a:gpt-5.2-chat-latest:openai_responses",
-			"channel-a:gpt-5.2:openai_chat",
+			"channel-a:gpt-5.2-chat-latest:openai_chat",
 			"channel-a:gpt-5.2:openai_responses",
-			"channel-a:gpt-5.2-2026-05-01:openai_chat",
+			"channel-a:gpt-5.2:openai_chat",
 			"channel-a:gpt-5.2-2026-05-01:openai_responses",
+			"channel-a:gpt-5.2-2026-05-01:openai_chat",
 		]);
 	});
 

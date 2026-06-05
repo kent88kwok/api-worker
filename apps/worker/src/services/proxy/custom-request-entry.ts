@@ -54,15 +54,14 @@ export function applyCustomRequestEntry(options: {
 		format: effectiveFormat,
 		downstreamProvider: options.downstreamProvider,
 		endpointType: downstreamEndpointType,
-		allowEndpointOverride: Boolean(options.formatOverride),
+		allowEndpointOverride:
+			Boolean(options.formatOverride) || entry.format === null,
 	});
 	if (!acceptsRequest) {
 		return null;
 	}
 	const upstreamProvider =
 		resolveRequestEntryFormatUpstreamProvider(effectiveFormat);
-	const requestEntryFormatToPersist =
-		entry.format || options.formatOverride ? undefined : effectiveFormat;
 	const resolvedPath =
 		entry.path ?? getRequestEntryFormatDefaultPath(effectiveFormat);
 	if (
@@ -72,12 +71,10 @@ export function applyCustomRequestEntry(options: {
 		return {
 			absoluteUrl: resolvedPath,
 			upstreamProvider,
-			requestEntryFormatToPersist,
 		};
 	}
 	return {
 		path: resolvedPath,
 		upstreamProvider,
-		requestEntryFormatToPersist,
 	};
 }

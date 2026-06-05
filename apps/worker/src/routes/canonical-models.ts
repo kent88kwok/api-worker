@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import type { AppEnv } from "../env";
 import { triggerBackupAfterDataChange } from "../services/backup-auto-sync";
+import { planCanonicalModelCleanup } from "../services/canonical-model-cleanup";
 import { syncCanonicalModelAliases } from "../services/canonical-model-registry";
 import { jsonError } from "../utils/http";
 import { nowIso } from "../utils/time";
@@ -61,23 +62,31 @@ function parseAliases(value: unknown, fallback: string): string[] {
 async function listCanonicalModelItems(
 	db: AppEnv["Bindings"]["DB"],
 ): Promise<CanonicalModelItem[]> {
-	const registry = await db
-		.prepare(
-			[
-				"SELECT canonical_model, display_name, provider_hint, import_regex, created_at, updated_at",
-				"FROM model_registry ORDER BY updated_at DESC, canonical_model ASC",
-			].join(" "),
-		)
-		.all<CanonicalModelRow>();
-	const aliases = await db
-		.prepare(
-			[
-				"SELECT alias, provider_hint, canonical_model FROM model_aliases",
-				"WHERE provider_hint = ''",
-				"ORDER BY canonical_model ASC, alias ASC",
-			].join(" "),
-		)
-		.all<CanonicalModelAliasRow>();
+	const [registry, aliases] = await Promise.all([
+		db
+			.prepare(
+				[
+					"SELECT canonical_model, display_name, provider_hint, import_regex, created_at, updated_at",
+					"FROM model_registry ORDER BY updated_at DESC, canonical_model ASC",
+				].join(" "),
+			)
+			.all<CanonicalModelRow>(),
+		db
+			.prepare(
+				[
+					"SELECT alias, provider_hint, canonical_model FROM model_aliases",
+					"WHERE provider_hint = ''",
+					"ORDER BY canonical_model ASC, alias ASC",
+				].join(" "),
+			)
+			.all<CanonicalModelAliasRow>(),
+	]);
+	const cleanupTargets = new Set(
+		planCanonicalModelCleanup({
+			registryRows: registry.results ?? [],
+			aliasRows: aliases.results ?? [],
+		}).map((item) => item.canonical_model),
+	);
 	const aliasMap = new Map<string, CanonicalModelItem["aliases"]>();
 	for (const row of aliases.results ?? []) {
 		const list = aliasMap.get(row.canonical_model) ?? [];
@@ -88,13 +97,41 @@ async function listCanonicalModelItems(
 		});
 		aliasMap.set(row.canonical_model, list);
 	}
-	return (registry.results ?? []).map((row) => ({
-		canonical_model: row.canonical_model,
-		import_regex: row.import_regex ?? null,
-		aliases: aliasMap.get(row.canonical_model) ?? [],
-		created_at: row.created_at,
-		updated_at: row.updated_at,
-	}));
+	return (registry.results ?? [])
+		.map((row) => ({
+			canonical_model: row.canonical_model,
+			import_regex: row.import_regex ?? null,
+			aliases: aliasMap.get(row.canonical_model) ?? [],
+			created_at: row.created_at,
+			updated_at: row.updated_at,
+		}))
+		.filter((item) => !cleanupTargets.has(item.canonical_model));
+}
+
+async function listCanonicalModelCleanupItems(db: AppEnv["Bindings"]["DB"]) {
+	const [registry, aliases] = await Promise.all([
+		db
+			.prepare(
+				[
+					"SELECT canonical_model, display_name, provider_hint, import_regex, created_at, updated_at",
+					"FROM model_registry ORDER BY updated_at DESC, canonical_model ASC",
+				].join(" "),
+			)
+			.all<CanonicalModelRow>(),
+		db
+			.prepare(
+				[
+					"SELECT alias, provider_hint, canonical_model FROM model_aliases",
+					"WHERE provider_hint = ''",
+					"ORDER BY canonical_model ASC, alias ASC",
+				].join(" "),
+			)
+			.all<CanonicalModelAliasRow>(),
+	]);
+	return planCanonicalModelCleanup({
+		registryRows: registry.results ?? [],
+		aliasRows: aliases.results ?? [],
+	});
 }
 
 async function ensureCanonicalModelBaseRows(
@@ -180,6 +217,38 @@ async function updateCanonicalModelReferences(
 canonicalModels.get("/", async (c) => {
 	const items = await listCanonicalModelItems(c.env.DB);
 	return c.json({ items });
+});
+
+canonicalModels.get("/orphans/preview", async (c) => {
+	const items = await listCanonicalModelCleanupItems(c.env.DB);
+	return c.json({
+		total: items.length,
+		items,
+	});
+});
+
+canonicalModels.post("/orphans/cleanup", async (c) => {
+	const items = await listCanonicalModelCleanupItems(c.env.DB);
+	for (const item of items) {
+		await c.env.DB.prepare(
+			"DELETE FROM model_aliases WHERE canonical_model = ?",
+		)
+			.bind(item.canonical_model)
+			.run();
+		await c.env.DB.prepare(
+			"DELETE FROM model_registry WHERE canonical_model = ?",
+		)
+			.bind(item.canonical_model)
+			.run();
+	}
+	if (items.length > 0) {
+		await triggerBackupAfterDataChange(c.env.DB);
+	}
+	return c.json({
+		ok: true,
+		deleted: items.length,
+		items,
+	});
 });
 
 canonicalModels.post("/sync", async (c) => {

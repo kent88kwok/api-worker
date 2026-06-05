@@ -1,7 +1,22 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+const providerTransformMocks = vi.hoisted(() => ({
+	normalizeChatRequestMock: vi.fn(
+		(
+			_provider: string,
+			endpoint: string,
+			body: Record<string, unknown> | null,
+		) => {
+			if (endpoint === "responses" && body?.input === undefined) {
+				return null;
+			}
+			return { messages: [], stream: false };
+		},
+	),
+}));
+
 vi.mock("../../apps/worker/src/services/provider-transform", () => ({
-	normalizeChatRequest: vi.fn(() => ({ messages: [], stream: false })),
+	normalizeChatRequest: providerTransformMocks.normalizeChatRequestMock,
 }));
 
 vi.mock("../../apps/worker/src/services/providers/chat-request", () => ({
@@ -27,10 +42,7 @@ vi.mock("../../apps/worker/src/services/providers/chat-request", () => ({
 	},
 }));
 
-import {
-	persistSiteVerificationResult,
-	verifySiteChannel,
-} from "../../apps/worker/src/services/site-verification";
+import { persistSiteVerificationResult, verifySiteChannel } from "../../apps/worker/src/services/site-verification";
 
 const originalFetch = globalThis.fetch;
 
@@ -56,6 +68,7 @@ function createOpenAiChannel(models: string[]) {
 afterEach(() => {
 	vi.restoreAllMocks();
 	globalThis.fetch = originalFetch;
+	providerTransformMocks.normalizeChatRequestMock.mockClear();
 });
 
 describe("site verification", () => {
@@ -90,9 +103,43 @@ describe("site verification", () => {
 
 		expect(result.verdict).toBe("serving");
 		expect(postCalls).toEqual([
-			{ path: "/v1/chat/completions", model: "gpt-4.1" },
 			{ path: "/v1/responses", model: "gpt-4.1" },
+			{ path: "/v1/chat/completions", model: "gpt-4.1" },
 		]);
+	});
+
+	it("自动模式优先命中 responses 时，会按 responses 端点标准化验证请求", async () => {
+		const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+			const url = String(input);
+			if (url.endsWith("/v1/models")) {
+				return Response.json({
+					data: [{ id: "gpt-4.1" }],
+				});
+			}
+			return Response.json({
+				choices: [{ message: { content: "OK" } }],
+			});
+		});
+		globalThis.fetch = fetchMock as typeof fetch;
+		vi.spyOn(Math, "random").mockReturnValue(0);
+
+		const result = await verifySiteChannel({
+			channel: createOpenAiChannel(["gpt-4.1"]),
+			tokens: [{ api_key: "sk-test", models_json: null }],
+		});
+
+		expect(result.verdict).toBe("serving");
+		expect(providerTransformMocks.normalizeChatRequestMock).toHaveBeenCalledWith(
+			"openai",
+			"responses",
+			expect.objectContaining({
+				model: "gpt-4.1",
+				input: "Reply with OK.",
+				max_output_tokens: 8,
+			}),
+			"gpt-4.1",
+			false,
+		);
 	});
 
 	it("只限制尝试模型数，不限制同一模型下的自动请求格式遍历", async () => {
@@ -132,12 +179,12 @@ describe("site verification", () => {
 
 		expect(result.verdict).toBe("failed");
 		expect(postCalls).toEqual([
-			{ path: "/v1/chat/completions", model: "gpt-4.1" },
 			{ path: "/v1/responses", model: "gpt-4.1" },
+			{ path: "/v1/chat/completions", model: "gpt-4.1" },
 		]);
 	});
 
-	it("验证成功后会把自动请求格式持久化到站点元数据", async () => {
+	it("验证成功后不会把自动请求格式持久化到站点元数据", async () => {
 		const calls: Array<{ sql: string; bindings: unknown[] }> = [];
 		const db = {
 			prepare(sql: string) {
@@ -192,7 +239,6 @@ describe("site verification", () => {
 				trace: {
 					latency_ms: 12,
 					upstream_status: 200,
-					request_entry_format: "openai_responses",
 				},
 				checked_at: "2026-06-05T00:00:00.000Z",
 			} as never,
@@ -205,7 +251,7 @@ describe("site verification", () => {
 		const metadata = JSON.parse(String(metadataUpdate?.bindings[0] ?? "{}"));
 		expect(metadata.request_entry).toEqual({
 			path: null,
-			format: "openai_responses",
+			format: null,
 		});
 	});
 });
