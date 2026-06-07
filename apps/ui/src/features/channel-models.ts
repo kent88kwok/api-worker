@@ -31,12 +31,13 @@ const statusOrder: Record<ModelChannel["status"], number> = {
 export function getChannelModelRows(
 	models: ModelItem[],
 	channelId: string | null | undefined,
+	previewModels: string[] = [],
 ): ChannelModelRow[] {
 	const normalizedChannelId = String(channelId ?? "").trim();
 	if (!normalizedChannelId) {
 		return [];
 	}
-	return models
+	const rows = models
 		.flatMap((model) => {
 			const channel = model.channels.find(
 				(item) => item.id === normalizedChannelId,
@@ -58,6 +59,25 @@ export function getChannelModelRows(
 			}
 			return left.model.localeCompare(right.model);
 		});
+	const existingModels = new Set(rows.map((row) => row.model));
+	for (const previewModel of previewModels) {
+		const normalizedModel = String(previewModel ?? "").trim();
+		if (!normalizedModel || existingModels.has(normalizedModel)) {
+			continue;
+		}
+		existingModels.add(normalizedModel);
+		rows.push({
+			model: normalizedModel,
+			status: "enabled",
+		});
+	}
+	return rows.sort((left, right) => {
+		const statusDelta = statusOrder[left.status] - statusOrder[right.status];
+		if (statusDelta !== 0) {
+			return statusDelta;
+		}
+		return left.model.localeCompare(right.model);
+	});
 }
 
 export function getPagedChannelModelRows(

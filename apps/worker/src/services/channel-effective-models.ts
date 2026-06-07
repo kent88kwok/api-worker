@@ -159,13 +159,25 @@ export function stageNewlyDiscoveredModels(
 	let metadata = metadataJson ?? null;
 	const previousModelList = normalizeModelList(previousModels);
 	const previousSet = new Set(previousModelList);
+	const discoveredModelList = normalizeModelList(discoveredModels);
+	const discoveredSet = new Set(discoveredModelList);
 	const initialManual = parseManualModelConfig(metadataJson);
 	const shouldPromoteFirstDiscovery =
 		previousModelList.length === 0 &&
 		initialManual.include.length === 0 &&
 		initialManual.pending.length === 0 &&
 		initialManual.exclude.length === 0;
-	for (const model of normalizeModelList(discoveredModels)) {
+	const nextInclude = initialManual.include.filter((model) =>
+		discoveredSet.has(model),
+	);
+	if (nextInclude.length !== initialManual.include.length) {
+		const metadataObject = safeJsonParse<Record<string, unknown>>(metadata, {});
+		setModelList(metadataObject, MANUAL_INCLUDE_KEY, nextInclude);
+		setModelList(metadataObject, MANUAL_PENDING_KEY, initialManual.pending);
+		setModelList(metadataObject, MANUAL_EXCLUDE_KEY, initialManual.exclude);
+		metadata = stringifyMetadata(metadataObject);
+	}
+	for (const model of discoveredModelList) {
 		if (previousSet.has(model)) {
 			continue;
 		}

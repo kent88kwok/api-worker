@@ -170,6 +170,25 @@ describe("channel effective models", () => {
 		expect(JSON.parse(metadata ?? "{}").site_type).toBe("new-api");
 	});
 
+	it("刷新后会移除不再存在的正式模型，但保留排除模型", () => {
+		const metadata = stageNewlyDiscoveredModels(
+			JSON.stringify({
+				site_type: "new-api",
+				manual_include_models: ["stale-enabled", "still-enabled"],
+				manual_pending_models: ["pending-model"],
+				manual_exclude_models: ["blocked-model"],
+			}),
+			["stale-enabled", "still-enabled", "blocked-model"],
+			["still-enabled", "brand-new-model"],
+		);
+
+		expect(parseManualModelConfig(metadata)).toEqual({
+			include: ["still-enabled"],
+			pending: ["pending-model", "brand-new-model"],
+			exclude: ["blocked-model"],
+		});
+	});
+
 	it("删除模型时从已发现模型列表中移除", () => {
 		const modelsJson = removeModelFromModelsJson(
 			JSON.stringify([{ id: "keep-a" }, { id: "remove-me" }, "keep-b"]),

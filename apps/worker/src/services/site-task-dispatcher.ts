@@ -41,6 +41,7 @@ import { extractModelIds, modelsToJson } from "./channel-models";
 import { stageNewlyDiscoveredModels } from "./channel-effective-models";
 import { parseChannelMetadata, resolveProvider } from "./channel-metadata";
 import { upsertChannelModelCapabilities } from "./channel-model-capabilities";
+import type { SiteType } from "./site-metadata";
 
 type SiteTaskRuntime = {
 	concurrency: number;
@@ -116,6 +117,18 @@ export type SiteChannelRefreshBatchResult = {
 	};
 	items: SiteChannelRefreshItem[];
 	runsAt: string;
+};
+
+type RefreshChannelTokenInput = {
+	id?: string;
+	name?: string;
+	api_key: string;
+};
+
+type RefreshChannelModelsOptions = {
+	tokens?: RefreshChannelTokenInput[];
+	siteType?: SiteType;
+	persist?: boolean;
 };
 
 type TaskProgressReporter<T> = (payload: {
@@ -796,6 +809,7 @@ async function refreshChannelModels(
 	db: D1Database,
 	env: Bindings,
 	channel: Awaited<ReturnType<typeof getChannelById>>,
+	options: RefreshChannelModelsOptions = {},
 ): Promise<SiteChannelRefreshItem> {
 	if (!channel) {
 		return {
@@ -810,28 +824,34 @@ async function refreshChannelModels(
 			models: [],
 		};
 	}
-	const tokenRows = await listCallTokens(db, {
-		channelIds: [channel.id],
-	});
+	const tokenRows =
+		options.tokens && options.tokens.length > 0
+			? []
+			: await listCallTokens(db, {
+					channelIds: [channel.id],
+				});
 	const tokens =
-		tokenRows.length > 0
-			? tokenRows.map((row) => ({
-					id: row.id,
-					name: row.name,
-					api_key: row.api_key,
-				}))
-			: [
-					{
-						id: "primary",
-						name: "主调用令牌",
-						api_key: String(channel.api_key ?? ""),
-					},
-				];
+		options.tokens && options.tokens.length > 0
+			? options.tokens
+			: tokenRows.length > 0
+				? tokenRows.map((row) => ({
+						id: row.id,
+						name: row.name,
+						api_key: row.api_key,
+					}))
+				: [
+						{
+							id: "primary",
+							name: "主调用令牌",
+							api_key: String(channel.api_key ?? ""),
+						},
+					];
 	const metadata = parseChannelMetadata(channel.metadata_json);
-	const provider = resolveProvider(metadata.site_type);
+	const siteType = options.siteType ?? metadata.site_type;
+	const provider = resolveProvider(siteType);
 	const result = await executeSiteTestTask(db, env, {
 		base_url: String(channel.base_url),
-		siteType: metadata.site_type,
+		siteType,
 		provider,
 		tokens,
 	});
@@ -864,6 +884,24 @@ async function refreshChannelModels(
 			failed_tokens: failedTokens,
 			failure_groups: failureGroups,
 			models: [],
+		};
+	}
+	const persist = options.persist !== false;
+	if (!persist) {
+		const failureSummary =
+			result.failed > 0 ? summarizeChannelTokenFailures(result.items) : null;
+		return {
+			site_id: channel.id,
+			site_name: channel.name,
+			status: failureSummary ? "warning" : "success",
+			message: failureSummary
+				? `已拉取 ${result.models.length} 个模型，但部分令牌失败`
+				: `已拉取 ${result.models.length} 个模型`,
+			detail_message: failureSummary,
+			successful_tokens: successfulTokens,
+			failed_tokens: failedTokens,
+			failure_groups: [],
+			models: result.models,
 		};
 	}
 	const updatedAt = nowIso();
@@ -900,6 +938,39 @@ async function refreshChannelModels(
 		failure_groups: [],
 		models: result.models,
 	};
+}
+
+export async function previewRefreshChannelById(
+	db: D1Database,
+	env: Bindings,
+	channelId: string,
+	input: {
+		name?: string;
+		base_url: string;
+		siteType: SiteType;
+		tokens: RefreshChannelTokenInput[];
+	},
+): Promise<SiteChannelRefreshItem | null> {
+	const current = await getChannelById(db, channelId);
+	if (!current) {
+		return null;
+	}
+	return refreshChannelModels(
+		db,
+		env,
+		{
+			...current,
+			name: input.name?.trim() || current.name,
+			base_url: input.base_url,
+			api_key:
+				input.tokens[0]?.api_key?.trim() || String(current.api_key ?? ""),
+		},
+		{
+			tokens: input.tokens,
+			siteType: input.siteType,
+			persist: false,
+		},
+	);
 }
 
 async function markDisabledChannelRecovered(

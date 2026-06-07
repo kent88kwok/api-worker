@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const runCheckinAllViaWorkerMock = vi.fn();
 const getCheckinScheduleTimeMock = vi.fn();
@@ -56,6 +56,8 @@ vi.mock("../../apps/worker/src/services/site-task-report-store", () => ({
 describe("CheckinScheduler", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date("2026-06-08T00:20:00+08:00"));
 
 		runCheckinAllViaWorkerMock.mockRejectedValue(new Error("checkin_failed"));
 		getCheckinScheduleTimeMock.mockResolvedValue("00:10");
@@ -69,6 +71,10 @@ describe("CheckinScheduler", () => {
 			sync_enabled: false,
 			sync_schedule_time: "04:40",
 		});
+	});
+
+	afterEach(() => {
+		vi.useRealTimers();
 	});
 
 	it("定时任务抛错时仍会重挂下一次 alarm", async () => {

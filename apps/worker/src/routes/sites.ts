@@ -33,6 +33,7 @@ import {
 	recoverDisabledChannelsViaWorker,
 	refreshActiveChannelsViaWorker,
 	refreshChannelById,
+	previewRefreshChannelById,
 	runCheckinAllViaWorker,
 	runCheckinSingleViaWorker,
 	verifyChannelById,
@@ -1085,6 +1086,41 @@ sites.post("/:id/checkin", async (c) => {
 		result: result.result,
 		runs_at: result.runsAt,
 	});
+});
+
+sites.post("/:id/refresh-preview", async (c) => {
+	const id = c.req.param("id");
+	const body = (await c.req.json().catch(() => null)) as SitePayload | null;
+	if (!body) {
+		return jsonError(c, 400, "missing_body", "missing_body");
+	}
+	const current = await getChannelById(c.env.DB, id);
+	if (!current) {
+		return jsonError(c, 404, "site_not_found", "site_not_found");
+	}
+	const currentMetadata = parseSiteMetadata(current.metadata_json);
+	const siteType =
+		body.site_type !== undefined
+			? parseSiteType(body.site_type)
+			: currentMetadata.site_type;
+	const baseUrl = resolveBaseUrl(siteType, body.base_url);
+	if (!baseUrl) {
+		return jsonError(c, 400, "missing_base_url", "missing_base_url");
+	}
+	const callTokens = normalizeCallTokens(body.call_tokens, body.api_key);
+	if (callTokens.length === 0) {
+		return jsonError(c, 400, "missing_call_tokens", "missing_call_tokens");
+	}
+	const result = await previewRefreshChannelById(c.env.DB, c.env, id, {
+		name: trimValue(body.name) || current.name,
+		base_url: baseUrl,
+		siteType,
+		tokens: callTokens,
+	});
+	if (!result) {
+		return jsonError(c, 404, "site_not_found", "site_not_found");
+	}
+	return c.json(result);
 });
 
 sites.post("/:id/refresh", async (c) => {

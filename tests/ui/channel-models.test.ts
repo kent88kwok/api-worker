@@ -76,6 +76,33 @@ describe("channel model rows", () => {
 		]);
 	});
 
+	it("会合并当前弹窗临时拉取到的新模型预览", () => {
+		const rows = getChannelModelRows(
+			[
+				{
+					id: "existing-enabled",
+					channels: [
+						{ id: "channel-a", name: "渠道 A", status: "enabled" },
+					],
+				},
+				{
+					id: "existing-pending",
+					channels: [
+						{ id: "channel-a", name: "渠道 A", status: "pending" },
+					],
+				},
+			],
+			"channel-a",
+			["preview-model", "existing-enabled", "preview-model"],
+		);
+
+		expect(rows).toEqual([
+			{ model: "existing-enabled", status: "enabled" },
+			{ model: "preview-model", status: "enabled" },
+			{ model: "existing-pending", status: "pending" },
+		]);
+	});
+
 	it("按关键词和状态筛选后分页展示", () => {
 		const rows = Array.from({ length: 16 }, (_, index) => ({
 			model: `model-${String(index + 1).padStart(2, "0")}`,

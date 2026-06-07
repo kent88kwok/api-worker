@@ -78,6 +78,7 @@ type ChannelsViewProps = {
 	editingSite: Site | null;
 	isSiteModalOpen: boolean;
 	taskReports: SiteTaskReportMap;
+	siteModelPreviewBySiteId: Record<string, string[]>;
 	siteSearch: string;
 	siteSort: SiteSortState;
 	isActionPending: (key: string) => boolean;
@@ -88,6 +89,7 @@ type ChannelsViewProps = {
 	onVerify: (id: string) => void;
 	onCheckin: (site: Site) => void;
 	onRefreshSite: (site: Site) => void;
+	onRefreshDraftSite: (siteId: string) => void;
 	onToggle: (id: string, status: string) => void;
 	onDelete: (site: Site) => void;
 	onSearchChange: (next: string) => void;
@@ -467,6 +469,7 @@ export const ChannelsView = ({
 	editingSite,
 	isSiteModalOpen,
 	taskReports,
+	siteModelPreviewBySiteId,
 	siteSearch,
 	siteSort,
 	isActionPending,
@@ -477,6 +480,7 @@ export const ChannelsView = ({
 	onVerify,
 	onCheckin,
 	onRefreshSite,
+	onRefreshDraftSite,
 	onToggle,
 	onDelete,
 	onSearchChange,
@@ -1452,7 +1456,11 @@ export const ChannelsView = ({
 						getCallTokenDragKey(token, index) === activeCallTokenDrag.tokenKey,
 				) ?? null);
 	const activeModelSite = editingSite ?? null;
-	const modelRows = getChannelModelRows(models, activeModelSite?.id);
+	const modelRows = getChannelModelRows(
+		models,
+		activeModelSite?.id,
+		activeModelSite ? (siteModelPreviewBySiteId[activeModelSite.id] ?? []) : [],
+	);
 	const modelRowsByStatus = {
 		enabled: modelRows.filter((item) => item.status === "enabled"),
 		pending: modelRows.filter((item) => item.status === "pending"),
@@ -1532,7 +1540,7 @@ export const ChannelsView = ({
 							size="sm"
 							type="button"
 							disabled={refreshPending}
-							onClick={() => onRefreshSite(activeModelSite)}
+							onClick={() => onRefreshDraftSite(activeModelSite.id)}
 						>
 							{refreshPending ? "拉取中..." : "拉取模型"}
 						</Button>

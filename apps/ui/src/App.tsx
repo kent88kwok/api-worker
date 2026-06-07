@@ -712,6 +712,9 @@ const App = () => {
 	const [siteForm, setSiteForm] = useState<SiteForm>(() => ({
 		...initialSiteForm,
 	}));
+	const [siteModelPreviewBySiteId, setSiteModelPreviewBySiteId] = useState<
+		Record<string, string[]>
+	>({});
 	const [isSiteModalOpen, setSiteModalOpen] = useState(false);
 	const [isTokenModalOpen, setTokenModalOpen] = useState(false);
 	const [siteTaskReports, setSiteTaskReports] = useState<SiteTaskReportMap>({});
@@ -1484,12 +1487,14 @@ const App = () => {
 
 	const closeSiteModal = useCallback(() => {
 		setEditingSite(null);
+		setSiteModelPreviewBySiteId({});
 		setSiteForm({ ...initialSiteForm });
 		setSiteModalOpen(false);
 	}, []);
 
 	const openSiteCreate = useCallback(() => {
 		setEditingSite(null);
+		setSiteModelPreviewBySiteId({});
 		setSiteForm({ ...initialSiteForm });
 		setSiteModalOpen(true);
 		dismissNotice();
@@ -1505,6 +1510,7 @@ const App = () => {
 	const startSiteEdit = useCallback(
 		(site: Site) => {
 			setEditingSite(site);
+			setSiteModelPreviewBySiteId({});
 			const callTokens =
 				site.call_tokens && site.call_tokens.length > 0
 					? site.call_tokens
@@ -3050,6 +3056,14 @@ const App = () => {
 				>(`/api/sites/${site.id}/refresh`, {
 					method: "POST",
 				});
+				setSiteModelPreviewBySiteId((prev) => {
+					if (!(site.id in prev)) {
+						return prev;
+					}
+					const next = { ...prev };
+					delete next[site.id];
+					return next;
+				});
 				await Promise.all([loadSites(), loadModels()]);
 				syncRefreshTaskItem(result, new Date().toISOString());
 				const failedTokens = getRefreshFailedTokenLabels(result);
@@ -3093,6 +3107,98 @@ const App = () => {
 			pushNotice,
 			startAction,
 			syncRefreshTaskItem,
+		],
+	);
+
+	const handleRefreshDraftSite = useCallback(
+		async (siteId: string) => {
+			if (!editingSite || editingSite.id !== siteId) {
+				return;
+			}
+			const actionKey = buildActionKey("site:refresh", siteId);
+			if (isActionPending(actionKey)) {
+				return;
+			}
+			const baseUrlValue = siteForm.base_url.trim();
+			if (!baseUrlValue && !getDefaultBaseUrlForSiteType(siteForm.site_type)) {
+				pushNotice("warning", "基础 URL 不能为空");
+				return;
+			}
+			const callTokens = siteForm.call_tokens
+				.map((token, index) => ({
+					id: token.id,
+					name: token.name.trim() || `调用令牌${index + 1}`,
+					api_key: token.api_key.trim(),
+					priority: index,
+				}))
+				.filter((token) => token.api_key.length > 0);
+			if (callTokens.length === 0) {
+				pushNotice("warning", "至少填写一个调用令牌");
+				return;
+			}
+			startAction(actionKey);
+			try {
+				const result = await apiFetch<
+					SiteChannelRefreshBatchReport["items"][number]
+				>(`/api/sites/${siteId}/refresh-preview`, {
+					method: "POST",
+					body: JSON.stringify({
+						name: siteForm.name.trim() || editingSite.name,
+						base_url: baseUrlValue,
+						site_type: siteForm.site_type,
+						call_tokens: callTokens,
+					}),
+				});
+				setSiteModelPreviewBySiteId((prev) => {
+					const next = { ...prev };
+					if (result.models.length > 0) {
+						next[siteId] = result.models;
+					} else {
+						delete next[siteId];
+					}
+					return next;
+				});
+				const failedTokens = getRefreshFailedTokenLabels(result);
+				const failureDetails = getRefreshFailureDetails(result);
+				const siteLabel = siteForm.name.trim() || editingSite.name || "站点";
+				pushNotice(
+					result.status === "success" ? "success" : "warning",
+					result.status === "warning"
+						? `${siteLabel}：${result.message}${
+								failedTokens.length > 0
+									? `\n失败令牌：${failedTokens.join("、")}`
+									: ""
+							}`
+						: result.status === "failed" && failureDetails.length > 0
+							? `${siteLabel}：${result.message}\n${failureDetails
+									.map((detail) =>
+										[
+											`令牌：${
+												detail.tokens.length > 0
+													? detail.tokens.join("、")
+													: "未标记令牌"
+											}`,
+											`失败码：${detail.code}`,
+											`失败原因：${detail.reason}`,
+										].join("\n"),
+									)
+									.join("\n")}`
+							: `${siteLabel}：${result.message}`,
+				);
+			} catch (error) {
+				pushNotice("error", (error as Error).message);
+			} finally {
+				endAction(actionKey);
+			}
+		},
+		[
+			apiFetch,
+			editingSite,
+			endAction,
+			isActionPending,
+			pushNotice,
+			siteForm,
+			startAction,
 		],
 	);
 
@@ -3888,6 +3994,7 @@ const App = () => {
 					editingSite={editingSite}
 					isSiteModalOpen={isSiteModalOpen}
 					taskReports={siteTaskReports}
+					siteModelPreviewBySiteId={siteModelPreviewBySiteId}
 					siteSearch={siteSearch}
 					siteSort={siteSort}
 					isActionPending={isActionPending}
@@ -3898,6 +4005,7 @@ const App = () => {
 					onVerify={handleSiteVerify}
 					onCheckin={handleCheckinRunSite}
 					onRefreshSite={handleRefreshSite}
+					onRefreshDraftSite={handleRefreshDraftSite}
 					onToggle={handleSiteToggle}
 					onDelete={requestSiteDelete}
 					onSearchChange={handleSiteSearchChange}
