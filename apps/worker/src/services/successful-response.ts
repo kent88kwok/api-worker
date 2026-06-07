@@ -1,3 +1,5 @@
+import { hasMeaningfulErrorField } from "./proxy-error-parser";
+
 function normalizeMessage(value: string | null | undefined): string | null {
 	if (!value) {
 		return null;
@@ -32,6 +34,27 @@ export function extractProbeText(payload: unknown): string {
 	const record = payload as Record<string, unknown>;
 	if (typeof record.output_text === "string") {
 		return record.output_text.trim();
+	}
+	const output = record.output;
+	if (Array.isArray(output)) {
+		for (const item of output) {
+			if (!item || typeof item !== "object") {
+				continue;
+			}
+			const content = (item as Record<string, unknown>).content;
+			if (!Array.isArray(content)) {
+				continue;
+			}
+			for (const part of content) {
+				if (!part || typeof part !== "object") {
+					continue;
+				}
+				const textValue = (part as Record<string, unknown>).text;
+				if (typeof textValue === "string" && textValue.trim().length > 0) {
+					return textValue.trim();
+				}
+			}
+		}
 	}
 	const choices = record.choices;
 	if (!Array.isArray(choices) || choices.length === 0) {
@@ -177,7 +200,7 @@ export async function inspectSuccessfulResponse(
 			.json()
 			.catch(() => null)) as Record<string, unknown> | null;
 		if (payload && typeof payload === "object" && !Array.isArray(payload)) {
-			if ("error" in payload) {
+			if (hasMeaningfulErrorField(payload)) {
 				return {
 					ok: false,
 					code: "abnormal_success_response",

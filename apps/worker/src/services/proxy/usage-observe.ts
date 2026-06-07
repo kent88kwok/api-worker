@@ -1,5 +1,8 @@
 import { invalidateSelectionHotCache } from "../hot-kv";
-import { extractJsonErrorPayload } from "../proxy-error-parser";
+import {
+	extractJsonErrorPayload,
+	hasMeaningfulErrorField,
+} from "../proxy-error-parser";
 import { processUsageEvent, type UsageEvent } from "../usage-events";
 import { safeJsonParse } from "../../utils/json";
 import { StreamUsageParseError } from "../../utils/usage";
@@ -189,7 +192,7 @@ export async function detectAbnormalSuccessResponse(
 		return null;
 	}
 	const record = payload as Record<string, unknown>;
-	if (!("error" in record)) {
+	if (!hasMeaningfulErrorField(record)) {
 		return null;
 	}
 	const details = extractJsonErrorPayload(record, response.status, {

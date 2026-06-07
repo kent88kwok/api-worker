@@ -8,6 +8,31 @@ export type ParsedErrorDetails = {
 	errorMetaJson: string | null;
 };
 
+export function hasMeaningfulErrorField(
+	payload: Record<string, unknown>,
+): boolean {
+	if (!("error" in payload)) {
+		return false;
+	}
+	const error = payload.error;
+	if (error === null || error === undefined) {
+		return false;
+	}
+	if (typeof error === "string") {
+		return error.trim().length > 0;
+	}
+	if (Array.isArray(error)) {
+		return error.length > 0;
+	}
+	if (typeof error === "object") {
+		return Object.keys(error as Record<string, unknown>).length > 0;
+	}
+	if (typeof error === "boolean") {
+		return error;
+	}
+	return true;
+}
+
 function normalizeMessage(value: string | null): string | null {
 	if (!value) {
 		return null;

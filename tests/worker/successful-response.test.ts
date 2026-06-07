@@ -54,4 +54,27 @@ describe("successful response inspection", () => {
 		expect(inspection.ok).toBe(true);
 		expect(inspection.outputText).toBe("OK");
 	});
+
+	it("把带有 error:null 的 OpenAI Responses 成功响应判为通过", async () => {
+		const response = Response.json({
+			id: "resp_123",
+			object: "response",
+			status: "completed",
+			error: null,
+			output: [
+				{
+					type: "message",
+					role: "assistant",
+					content: [{ type: "output_text", text: "pong" }],
+				},
+			],
+		});
+
+		const inspection = await inspectSuccessfulResponse(response, {
+			expectedProvider: "openai",
+		});
+
+		expect(inspection.ok).toBe(true);
+		expect(inspection.outputText).toBe("pong");
+	});
 });
