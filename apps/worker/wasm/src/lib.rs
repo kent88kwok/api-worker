@@ -1018,7 +1018,7 @@ fn normalize_openai_reasoning(body: &Map<String, Value>) -> Value {
         reasoning.insert("openaiReasoningEffort".to_string(), raw);
     }
     if reasoning.is_empty() {
-        Value::Null
+        normalize_anthropic_reasoning(body)
     } else {
         Value::Object(reasoning)
     }

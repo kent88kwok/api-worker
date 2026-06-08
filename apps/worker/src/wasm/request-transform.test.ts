@@ -122,6 +122,54 @@ describe("wasm request transform", () => {
 		expect(request?.body?.reasoning_effort).toBe("xhigh");
 	});
 
+	it("OpenAI chat 入口会把 Anthropic max 映射到 OpenAI 最高 xhigh", () => {
+		const normalized = normalizeChatRequest(
+			{
+				model: "gpt-5.5",
+				max_tokens: 16000,
+				thinking: { type: "adaptive" },
+				output_config: { effort: "max" },
+				messages: [{ role: "user", content: "ping" }],
+			},
+			"openai",
+			"chat",
+			"gpt-5.5",
+		);
+
+		const request = buildChatRequest(normalized, "openai", "chat", "gpt-5.5");
+
+		expect(request?.body?.reasoning_effort).toBe("xhigh");
+	});
+
+	it("OpenAI chat 入口会把 Anthropic max 映射到 Gemini level 最高 high", () => {
+		const normalized = normalizeChatRequest(
+			{
+				model: "gpt-5.5",
+				max_tokens: 16000,
+				thinking: { type: "adaptive" },
+				output_config: { effort: "max" },
+				messages: [{ role: "user", content: "ping" }],
+			},
+			"openai",
+			"chat",
+			"gpt-5.5",
+		);
+
+		const request = buildChatRequest(
+			normalized,
+			"gemini",
+			"chat",
+			"gemini-3-pro",
+		);
+
+		expect(
+			(
+				(request?.body?.generationConfig as Record<string, unknown>)
+					?.thinkingConfig as Record<string, unknown>
+			)?.thinkingLevel,
+		).toBe("high");
+	});
+
 	it("Anthropic 同 provider 重建时保留 adaptive thinking 和 output_config", () => {
 		const normalized = normalizeChatRequest(
 			{

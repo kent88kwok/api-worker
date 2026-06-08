@@ -7,6 +7,34 @@ function readEffort(value: unknown): string | number | null {
 	return null;
 }
 
+function readObject(value: unknown): ReasoningInput | null {
+	return value && typeof value === "object" && !Array.isArray(value)
+		? (value as ReasoningInput)
+		: null;
+}
+
+function readBudgetEffort(value: unknown): string | null {
+	const budget =
+		typeof value === "number"
+			? value
+			: typeof value === "string"
+				? Number(value)
+				: Number.NaN;
+	if (!Number.isFinite(budget)) {
+		return null;
+	}
+	if (budget <= 0) {
+		return "none";
+	}
+	if (budget < 2048) {
+		return "low";
+	}
+	if (budget < 8192) {
+		return "medium";
+	}
+	return "high";
+}
+
 /**
  * Extracts reasoning effort from request payloads.
  *
@@ -29,8 +57,29 @@ export function extractReasoningEffort(input: unknown): string | number | null {
 	if (typeof reasoning === "string" || typeof reasoning === "number") {
 		return reasoning;
 	}
-	if (reasoning && typeof reasoning === "object" && !Array.isArray(reasoning)) {
-		return readEffort((reasoning as ReasoningInput).effort);
+	const reasoningObj = readObject(reasoning);
+	if (reasoningObj) {
+		const effort = readEffort(reasoningObj.effort);
+		if (effort !== null) {
+			return effort;
+		}
 	}
-	return null;
+	const outputConfig = readObject(body.output_config ?? body.outputConfig);
+	const outputConfigEffort = readEffort(outputConfig?.effort);
+	if (outputConfigEffort !== null) {
+		return outputConfigEffort;
+	}
+	const thinking = readObject(body.thinking);
+	const thinkingEffort = readEffort(thinking?.effort);
+	if (thinkingEffort !== null) {
+		return thinkingEffort;
+	}
+	const thinkingType = readEffort(thinking?.type);
+	if (
+		typeof thinkingType === "string" &&
+		thinkingType.trim().toLowerCase() === "disabled"
+	) {
+		return "none";
+	}
+	return readBudgetEffort(thinking?.budget_tokens ?? thinking?.budgetTokens);
 }
