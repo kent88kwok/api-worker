@@ -814,6 +814,206 @@ fn number_or_null(value: Option<&Value>) -> Value {
     numeric_value(value).map(Value::from).unwrap_or(Value::Null)
 }
 
+fn string_value(value: Option<&Value>) -> Option<String> {
+    match value? {
+        Value::String(s) => Some(s.to_string()),
+        Value::Number(n) => Some(n.to_string()),
+        _ => None,
+    }
+}
+
+fn bool_value(value: Option<&Value>) -> Option<bool> {
+    value.and_then(|v| v.as_bool())
+}
+
+fn canonical_effort(value: &str) -> Option<&'static str> {
+    match value
+        .trim()
+        .to_ascii_lowercase()
+        .replace(['-', '_'], "")
+        .as_str()
+    {
+        "none" | "off" | "disabled" => Some("none"),
+        "minimal" => Some("minimal"),
+        "low" => Some("low"),
+        "medium" | "auto" => Some("medium"),
+        "high" => Some("high"),
+        "xhigh" | "extra" | "extrahigh" | "veryhigh" => Some("xhigh"),
+        "max" | "maximum" => Some("max"),
+        _ => None,
+    }
+}
+
+fn effort_value(value: Option<&Value>) -> Option<String> {
+    string_value(value).and_then(|raw| canonical_effort(&raw).map(|v| v.to_string()))
+}
+
+fn effort_from_budget_tokens(budget: f64) -> Option<&'static str> {
+    if budget <= 0.0 {
+        return Some("none");
+    }
+    if budget < 2048.0 {
+        return Some("low");
+    }
+    if budget < 8192.0 {
+        return Some("medium");
+    }
+    Some("high")
+}
+
+fn budget_tokens_from_effort(effort: &str) -> Option<f64> {
+    match canonical_effort(effort)? {
+        "none" => Some(0.0),
+        "minimal" | "low" => Some(1024.0),
+        "medium" => Some(4096.0),
+        "high" => Some(8192.0),
+        "xhigh" | "max" => Some(16384.0),
+        _ => None,
+    }
+}
+
+fn normalized_budget_tokens(value: Option<&Value>) -> Option<f64> {
+    let budget = numeric_value(value)?;
+    if budget.is_finite() {
+        Some(budget.max(0.0))
+    } else {
+        None
+    }
+}
+
+fn normalize_openai_reasoning(body: &Map<String, Value>) -> Value {
+    let raw_reasoning = body.get("reasoning").cloned();
+    let raw_reasoning_effort = body
+        .get("reasoning_effort")
+        .or_else(|| body.get("reasoningEffort"))
+        .cloned();
+    let reasoning_obj = raw_reasoning.as_ref().and_then(|v| v.as_object());
+    let effort = effort_value(raw_reasoning_effort.as_ref())
+        .or_else(|| effort_value(raw_reasoning.as_ref()))
+        .or_else(|| reasoning_obj.and_then(|obj| effort_value(obj.get("effort"))));
+
+    let mut reasoning = Map::new();
+    if let Some(effort) = effort {
+        reasoning.insert("effort".to_string(), Value::String(effort));
+    }
+    if let Some(raw) = raw_reasoning {
+        reasoning.insert("openaiReasoning".to_string(), raw);
+    }
+    if let Some(raw) = raw_reasoning_effort {
+        reasoning.insert("openaiReasoningEffort".to_string(), raw);
+    }
+    if reasoning.is_empty() {
+        Value::Null
+    } else {
+        Value::Object(reasoning)
+    }
+}
+
+fn normalize_anthropic_reasoning(body: &Map<String, Value>) -> Value {
+    let raw_thinking = body.get("thinking").cloned();
+    let raw_output_config = body.get("output_config").cloned();
+    let thinking_obj = raw_thinking.as_ref().and_then(|v| v.as_object());
+    let output_config_obj = raw_output_config.as_ref().and_then(|v| v.as_object());
+    let budget_tokens =
+        thinking_obj.and_then(|obj| normalized_budget_tokens(obj.get("budget_tokens")));
+    let effort = output_config_obj
+        .and_then(|obj| effort_value(obj.get("effort")))
+        .or_else(|| body.get("effort").and_then(|v| effort_value(Some(v))))
+        .or_else(|| {
+            body.get("outputConfig")
+                .and_then(|v| v.as_object())
+                .and_then(|obj| effort_value(obj.get("effort")))
+        })
+        .or_else(|| thinking_obj.and_then(|obj| effort_value(obj.get("effort"))))
+        .or_else(|| {
+            thinking_obj
+                .and_then(|obj| string_value(obj.get("type")))
+                .and_then(|kind| {
+                    if kind.eq_ignore_ascii_case("disabled") {
+                        Some("none".to_string())
+                    } else {
+                        None
+                    }
+                })
+        })
+        .or_else(|| {
+            budget_tokens
+                .and_then(|budget| effort_from_budget_tokens(budget).map(|v| v.to_string()))
+        });
+
+    let mut reasoning = Map::new();
+    if let Some(effort) = effort {
+        reasoning.insert("effort".to_string(), Value::String(effort));
+    }
+    if let Some(budget_tokens) = budget_tokens {
+        reasoning.insert("budgetTokens".to_string(), Value::from(budget_tokens));
+    }
+    if let Some(raw) = raw_thinking {
+        reasoning.insert("anthropicThinking".to_string(), raw);
+    }
+    if let Some(raw) = raw_output_config {
+        reasoning.insert("anthropicOutputConfig".to_string(), raw);
+    }
+    if reasoning.is_empty() {
+        Value::Null
+    } else {
+        Value::Object(reasoning)
+    }
+}
+
+fn normalize_gemini_reasoning(generation_config: &Map<String, Value>) -> Value {
+    let raw_thinking_config = generation_config
+        .get("thinkingConfig")
+        .or_else(|| generation_config.get("thinking_config"))
+        .cloned();
+    let thinking_obj = raw_thinking_config.as_ref().and_then(|v| v.as_object());
+    let budget_tokens = thinking_obj.and_then(|obj| {
+        normalized_budget_tokens(
+            obj.get("thinkingBudget")
+                .or_else(|| obj.get("thinking_budget"))
+                .or_else(|| obj.get("budgetTokens"))
+                .or_else(|| obj.get("budget_tokens")),
+        )
+    });
+    let effort = thinking_obj
+        .and_then(|obj| {
+            effort_value(
+                obj.get("thinkingLevel")
+                    .or_else(|| obj.get("thinking_level"))
+                    .or_else(|| obj.get("effort")),
+            )
+        })
+        .or_else(|| {
+            budget_tokens
+                .and_then(|budget| effort_from_budget_tokens(budget).map(|v| v.to_string()))
+        });
+    let include_thoughts = thinking_obj.and_then(|obj| {
+        bool_value(
+            obj.get("includeThoughts")
+                .or_else(|| obj.get("include_thoughts")),
+        )
+    });
+
+    let mut reasoning = Map::new();
+    if let Some(effort) = effort {
+        reasoning.insert("effort".to_string(), Value::String(effort));
+    }
+    if let Some(budget_tokens) = budget_tokens {
+        reasoning.insert("budgetTokens".to_string(), Value::from(budget_tokens));
+    }
+    if let Some(include_thoughts) = include_thoughts {
+        reasoning.insert("includeThoughts".to_string(), Value::Bool(include_thoughts));
+    }
+    if let Some(raw) = raw_thinking_config {
+        reasoning.insert("geminiThinkingConfig".to_string(), raw);
+    }
+    if reasoning.is_empty() {
+        Value::Null
+    } else {
+        Value::Object(reasoning)
+    }
+}
+
 fn value_to_text(value: Option<&Value>) -> String {
     let Some(value) = value else {
         return String::new();
@@ -1320,6 +1520,7 @@ fn normalize_chat_request_value(
             "topP": number_or_null(body.get("top_p")),
             "maxTokens": number_or_null(body.get("max_output_tokens").or_else(|| body.get("max_tokens"))),
             "responseFormat": body.get("response_format").cloned().unwrap_or(Value::Null),
+            "reasoning": normalize_openai_reasoning(body),
         }));
     }
     if provider == "openai" {
@@ -1333,6 +1534,7 @@ fn normalize_chat_request_value(
             "topP": number_or_null(body.get("top_p")),
             "maxTokens": number_or_null(body.get("max_tokens")),
             "responseFormat": body.get("response_format").cloned().unwrap_or(Value::Null),
+            "reasoning": normalize_openai_reasoning(body),
         }));
     }
     if provider == "anthropic" {
@@ -1351,6 +1553,7 @@ fn normalize_chat_request_value(
             "topP": number_or_null(body.get("top_p")),
             "maxTokens": number_or_null(body.get("max_tokens")),
             "responseFormat": Value::Null,
+            "reasoning": normalize_anthropic_reasoning(body),
         }));
     }
     let system_text = extract_system_text(
@@ -1376,6 +1579,7 @@ fn normalize_chat_request_value(
         "topP": number_or_null(generation_config.get("topP").or_else(|| generation_config.get("top_p"))),
         "maxTokens": number_or_null(generation_config.get("maxOutputTokens").or_else(|| generation_config.get("max_tokens"))),
         "responseFormat": Value::Null,
+        "reasoning": normalize_gemini_reasoning(&generation_config),
     }))
 }
 
@@ -1410,6 +1614,144 @@ fn tool_args_to_string(value: Option<&Value>) -> String {
         Some(Value::String(s)) => s.to_string(),
         Some(v) => serde_json::to_string(v).unwrap_or_else(|_| "{}".to_string()),
         None => "{}".to_string(),
+    }
+}
+
+fn normalized_reasoning_obj(normalized: &Map<String, Value>) -> Option<&Map<String, Value>> {
+    normalized.get("reasoning").and_then(|v| v.as_object())
+}
+
+fn reasoning_effort(normalized: &Map<String, Value>) -> Option<String> {
+    normalized_reasoning_obj(normalized)
+        .and_then(|obj| obj.get("effort"))
+        .and_then(|v| v.as_str())
+        .and_then(canonical_effort)
+        .map(|v| v.to_string())
+}
+
+fn openai_reasoning_effort(effort: &str) -> Option<&'static str> {
+    match canonical_effort(effort)? {
+        "max" => Some("xhigh"),
+        value => Some(value),
+    }
+}
+
+fn insert_openai_chat_reasoning_field(
+    body: &mut Map<String, Value>,
+    normalized: &Map<String, Value>,
+) {
+    let Some(reasoning) = normalized_reasoning_obj(normalized) else {
+        return;
+    };
+    if let Some(raw_effort) = reasoning.get("openaiReasoningEffort") {
+        body.insert("reasoning_effort".to_string(), raw_effort.clone());
+        return;
+    }
+    let Some(effort) = reasoning_effort(normalized)
+        .and_then(|v| openai_reasoning_effort(&v).map(|mapped| mapped.to_string()))
+    else {
+        return;
+    };
+    body.insert("reasoning_effort".to_string(), Value::String(effort));
+}
+
+fn insert_openai_responses_reasoning_field(
+    body: &mut Map<String, Value>,
+    normalized: &Map<String, Value>,
+) {
+    if body.contains_key("reasoning") {
+        return;
+    }
+    let Some(reasoning) = normalized_reasoning_obj(normalized) else {
+        return;
+    };
+    if let Some(raw_reasoning) = reasoning.get("openaiReasoning") {
+        body.insert("reasoning".to_string(), raw_reasoning.clone());
+        return;
+    }
+    let Some(effort) = reasoning_effort(normalized)
+        .and_then(|v| openai_reasoning_effort(&v).map(|mapped| mapped.to_string()))
+    else {
+        return;
+    };
+    body.insert("reasoning".to_string(), json!({ "effort": effort }));
+}
+
+fn insert_anthropic_thinking_field(body: &mut Map<String, Value>, normalized: &Map<String, Value>) {
+    let Some(reasoning) = normalized_reasoning_obj(normalized) else {
+        return;
+    };
+    if let Some(raw_thinking) = reasoning.get("anthropicThinking") {
+        body.insert("thinking".to_string(), raw_thinking.clone());
+        if let Some(raw_output_config) = reasoning.get("anthropicOutputConfig") {
+            body.insert("output_config".to_string(), raw_output_config.clone());
+        }
+        return;
+    }
+    let Some(effort) = reasoning_effort(normalized) else {
+        return;
+    };
+    if effort == "none" {
+        body.insert("thinking".to_string(), json!({ "type": "disabled" }));
+        return;
+    }
+    body.insert(
+        "thinking".to_string(),
+        json!({
+            "type": "adaptive",
+        }),
+    );
+    body.insert(
+        "output_config".to_string(),
+        json!({
+            "effort": effort,
+        }),
+    );
+}
+
+fn is_gemini_3_model(model: &str) -> bool {
+    let normalized = model.to_ascii_lowercase();
+    normalized.contains("gemini-3") || normalized.contains("gemini/3")
+}
+
+fn insert_gemini_thinking_config(
+    generation_config: &mut Map<String, Value>,
+    normalized: &Map<String, Value>,
+    model: &str,
+) {
+    let Some(reasoning) = normalized_reasoning_obj(normalized) else {
+        return;
+    };
+    if let Some(raw_config) = reasoning.get("geminiThinkingConfig") {
+        generation_config.insert("thinkingConfig".to_string(), raw_config.clone());
+        return;
+    }
+    let mut thinking_config = Map::new();
+    if is_gemini_3_model(model) {
+        if let Some(effort) = reasoning_effort(normalized) {
+            if effort == "none" {
+                thinking_config.insert(
+                    "thinkingLevel".to_string(),
+                    Value::String("none".to_string()),
+                );
+            } else {
+                thinking_config.insert("thinkingLevel".to_string(), Value::String(effort));
+            }
+        }
+    } else if let Some(budget_tokens) = reasoning
+        .get("budgetTokens")
+        .and_then(|v| numeric_value(Some(v)))
+        .or_else(|| {
+            reasoning_effort(normalized).and_then(|effort| budget_tokens_from_effort(&effort))
+        })
+    {
+        thinking_config.insert("thinkingBudget".to_string(), Value::from(budget_tokens));
+    }
+    if let Some(include_thoughts) = reasoning.get("includeThoughts").and_then(|v| v.as_bool()) {
+        thinking_config.insert("includeThoughts".to_string(), Value::Bool(include_thoughts));
+    }
+    if !thinking_config.is_empty() {
+        generation_config.insert("thinkingConfig".to_string(), Value::Object(thinking_config));
     }
 }
 
@@ -1459,6 +1801,7 @@ fn build_upstream_chat_request_value(
         if !model.is_empty() {
             body.insert("model".to_string(), Value::String(model.to_string()));
         }
+        insert_openai_responses_reasoning_field(&mut body, normalized);
         if is_stream {
             body.insert("stream".to_string(), Value::Bool(true));
         }
@@ -1599,6 +1942,7 @@ fn build_upstream_chat_request_value(
         if let Some(max_tokens) = numeric_value(normalized.get("maxTokens")) {
             body.insert("max_tokens".to_string(), Value::from(max_tokens));
         }
+        insert_openai_chat_reasoning_field(&mut body, normalized);
         if let Some(response_format) = normalized.get("responseFormat") {
             if !response_format.is_null() {
                 body.insert("response_format".to_string(), response_format.clone());
@@ -1749,6 +2093,7 @@ fn build_upstream_chat_request_value(
         if let Some(top_p) = numeric_value(normalized.get("topP")) {
             body.insert("top_p".to_string(), Value::from(top_p));
         }
+        insert_anthropic_thinking_field(&mut body, normalized);
         if is_stream {
             body.insert("stream".to_string(), Value::Bool(true));
         }
@@ -1882,6 +2227,7 @@ fn build_upstream_chat_request_value(
             Value::from(max_output_tokens),
         );
     }
+    insert_gemini_thinking_config(&mut generation_config, normalized, model);
     if !generation_config.is_empty() {
         body.insert(
             "generationConfig".to_string(),

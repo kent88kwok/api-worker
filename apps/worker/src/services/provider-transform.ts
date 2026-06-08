@@ -47,6 +47,7 @@ export type NormalizedChatRequest = {
 	topP: number | null;
 	maxTokens: number | null;
 	responseFormat: unknown | null;
+	reasoning: Record<string, unknown> | null;
 };
 
 export type NormalizedEmbeddingRequest = {
