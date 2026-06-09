@@ -136,11 +136,10 @@ describe("channel routing with effective models", () => {
 			),
 		).toEqual([
 			"channel-a:gpt-5.2-chat-latest:openai_chat",
-			"channel-a:gpt-5.2-chat-latest:openai_responses",
 			"channel-a:gpt-5.2:openai_chat",
-			"channel-a:gpt-5.2:openai_responses",
 			"channel-a:gpt-5.2-2026-05-01:openai_chat",
-			"channel-a:gpt-5.2-2026-05-01:openai_responses",
+			"channel-b:gpt-5.2:openai_chat",
+			"channel-b:gpt-5.2-mini:openai_chat",
 		]);
 	});
 
@@ -172,7 +171,6 @@ describe("channel routing with effective models", () => {
 		});
 
 		expect(plan.map((item) => item.model)).toEqual([
-			"nvidia/llama-3.1-nemotron-51b-instruct",
 			"nvidia/llama-3.1-nemotron-51b-instruct",
 		]);
 	});
@@ -209,10 +207,7 @@ describe("channel routing with effective models", () => {
 
 		expect(plan.map((item) => item.model)).toEqual([
 			"google/gemma-4-31b-it",
-			"google/gemma-4-31b-it",
 			"gemma-4-31b",
-			"gemma-4-31b",
-			"gemma-4-31b-t",
 			"gemma-4-31b-t",
 		]);
 	});

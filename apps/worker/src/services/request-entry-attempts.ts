@@ -30,7 +30,13 @@ function isFormatCompatibleWithEndpointType(
 	format: RequestEntryFormat,
 	endpointType: EndpointType,
 ): boolean {
-	return endpointType === "chat" || endpointType === "responses";
+	if (endpointType !== "chat" && endpointType !== "responses") {
+		return false;
+	}
+	if (resolveRequestEntryFormatUpstreamProvider(format) !== "openai") {
+		return true;
+	}
+	return getRequestEntryFormatRequestEndpointType(format) === endpointType;
 }
 
 function buildAutomaticFormatOrder(

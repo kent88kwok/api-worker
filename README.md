@@ -288,6 +288,8 @@ bun run dev -- --remote-d1
 - Service Binding: `ATTEMPT_WORKER`（绑定到 `attempt-worker`）
 - CORS 默认值：`*`（如需限制来源，可配置可选绑定 `CORS_ORIGIN`）
 
+定时签到、启用渠道模型刷新、禁用渠道恢复探测、定时备份和价格同步由 `CheckinScheduler` Durable Object 统一判断北京时间日程并通过 alarm 自循环执行。调度器会按各任务的计划时间和最近运行日期去重，避免重复执行。
+
 注意：
 
 - 仓库中的 `database_id` / `KV namespace id` 使用占位值，避免提交个人账号资源 ID。
@@ -344,7 +346,7 @@ bun run dev -- --remote-d1
 
 有效模型 = 自动验证通过模型 + 手动加入正式模型 - 待加入模型 - 已排除模型；仅当渠道没有验证通过模型且没有手动状态配置时，才使用旧的渠道模型列表作为兼容兜底。
 
-渠道编辑中的“请求入口”用于兼容非标准上游入口。默认留空时按站点类型的标准路径转发；填写如 `/codex` 并选择请求格式后，只有匹配的下游请求会走该入口，不匹配的请求会跳过该渠道。请求格式按站点类型展示，保存值使用明确协议名：`openai_chat`、`openai_responses`、`anthropic_messages`、`gemini_generate_content`。例如 `openai_responses` 只接 `/v1/responses`，`openai_chat` 只接 `/v1/chat/completions`。如果填写请求入口但请求格式保持“自动”，系统会优先按当前下游请求类型尝试该入口：Chat 请求先试 Chat，Responses 请求先试 Responses；失败后仍会继续尝试同站点支持的其他自动格式，且不会把站点配置固化为某个明确格式。模型拉取仍默认使用模型列表接口，不受请求入口影响。
+渠道编辑中的“请求入口”用于兼容非标准上游入口。默认留空时按站点类型的标准路径转发；填写如 `/codex` 并选择请求格式后，只有匹配的下游请求会走该入口，不匹配的请求会跳过该渠道。请求格式按站点类型展示，保存值使用明确协议名：`openai_chat`、`openai_responses`、`anthropic_messages`、`gemini_generate_content`。例如 `openai_responses` 只接 `/v1/responses`，`openai_chat` 只接 `/v1/chat/completions`。如果填写请求入口但请求格式保持“自动”，OpenAI Chat/Responses 会按当前下游请求类型选择对应入口：Chat 请求只试 `openai_chat`，Responses 请求只试 `openai_responses`，不会在失败后自动互转；支持多 provider 的站点类型仍可按能力继续尝试非 OpenAI provider 格式，且不会把站点配置固化为某个明确格式。模型拉取仍默认使用模型列表接口，不受请求入口影响。
 
 站点验证分为模型发现和真实服务验证：模型发现只用于确认模型列表接口能返回可用模型；真实服务验证会发送最小聊天请求，并检查 HTTP 200 响应是否符合当前站点类型的 API JSON 结构且能抽取到真实输出。纯文本、HTML 落地页或无法解析出模型的响应不会被视为可用服务，也不会触发已禁用站点自动恢复。
 

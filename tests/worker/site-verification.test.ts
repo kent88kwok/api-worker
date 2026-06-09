@@ -97,7 +97,7 @@ describe("site verification", () => {
 		expect(result.discovered_models).toEqual(["google/gemma-4-31b-it"]);
 	});
 
-	it("网络错误会按现有请求规则继续尝试后续请求格式", async () => {
+	it("OpenAI Chat 验证网络错误后不会自动切到 Responses", async () => {
 		const postCalls: Array<{ path: string; model: string }> = [];
 		const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
 			const url = String(input);
@@ -126,13 +126,10 @@ describe("site verification", () => {
 			tokens: [{ api_key: "sk-test", models_json: null }],
 		});
 
-		expect(result.verdict).toBe("serving");
-		expect(result.request_entry_format).toBe("openai_responses");
+		expect(result.verdict).toBe("failed");
+		expect(result.request_entry_format).toBe("openai_chat");
 		expect(result.tried_models).toEqual(["gpt-4.1"]);
-		expect(result.tried_request_formats).toEqual([
-			"openai_chat",
-			"openai_responses",
-		]);
+		expect(result.tried_request_formats).toEqual(["openai_chat"]);
 		expect(result.attempts).toEqual([
 			{
 				model: "gpt-4.1",
@@ -146,22 +143,9 @@ describe("site verification", () => {
 				detail_message: "socket hang up",
 				latency_ms: expect.any(Number),
 			},
-			{
-				model: "gpt-4.1",
-				request_model: "gpt-4.1",
-				request_entry_format: "openai_responses",
-				endpoint_type: "responses",
-				provider: "openai",
-				status: "success",
-				http_status: 200,
-				detail_code: "service_request_succeeded",
-				detail_message: "service_request_succeeded",
-				latency_ms: expect.any(Number),
-			},
 		]);
 		expect(postCalls).toEqual([
 			{ path: "/v1/chat/completions", model: "gpt-4.1" },
-			{ path: "/v1/responses", model: "gpt-4.1" },
 		]);
 	});
 
@@ -200,7 +184,7 @@ describe("site verification", () => {
 		);
 	});
 
-	it("只限制尝试模型数，不限制同一模型下的自动请求格式遍历", async () => {
+	it("模型数限制下同一 OpenAI 模型只按当前请求格式验证", async () => {
 		const postCalls: Array<{ path: string; model: string }> = [];
 		const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
 			const url = String(input);
@@ -238,7 +222,6 @@ describe("site verification", () => {
 		expect(result.verdict).toBe("failed");
 		expect(postCalls).toEqual([
 			{ path: "/v1/chat/completions", model: "gpt-4.1" },
-			{ path: "/v1/responses", model: "gpt-4.1" },
 		]);
 	});
 

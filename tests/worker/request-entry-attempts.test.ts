@@ -5,7 +5,31 @@ import {
 } from "../../apps/worker/src/services/request-entry-attempts";
 
 describe("request entry attempt order", () => {
-	it("subapi 自动模式按站点能力返回全部兼容请求格式", () => {
+	it("OpenAI 兼容站点自动模式只返回当前请求对应的 OpenAI 格式", () => {
+		expect(
+			buildRequestEntryFormatAttemptOrder({
+				siteType: "openai",
+				entry: {
+					path: null,
+					format: null,
+				},
+				endpointType: "chat",
+			}),
+		).toEqual(["openai_chat"]);
+
+		expect(
+			buildRequestEntryFormatAttemptOrder({
+				siteType: "new-api",
+				entry: {
+					path: null,
+					format: null,
+				},
+				endpointType: "responses",
+			}),
+		).toEqual(["openai_responses"]);
+	});
+
+	it("subapi 自动模式保留跨 provider 尝试但不在 OpenAI Chat/Responses 间互转", () => {
 		expect(
 			buildRequestEntryFormatAttemptOrder({
 				siteType: "subapi",
@@ -17,7 +41,6 @@ describe("request entry attempt order", () => {
 			}),
 		).toEqual([
 			"openai_chat",
-			"openai_responses",
 			"anthropic_messages",
 			"gemini_generate_content",
 		]);

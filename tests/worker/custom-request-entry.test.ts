@@ -66,7 +66,7 @@ describe("custom request entry", () => {
 		expect(entry).toBeNull();
 	});
 
-	it("OpenAI 自动格式回退时允许在 chat 请求里切到 responses", () => {
+	it("显式 formatOverride 可在内部构造 OpenAI Responses 入口", () => {
 		const entry = applyCustomRequestEntry({
 			siteType: "openai",
 			entry: {

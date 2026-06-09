@@ -84,6 +84,10 @@ type RescheduleResult = {
 	pricingSyncNextRunAt: string | null;
 };
 
+type StorageWithGetAlarm = DurableObjectState["storage"] & {
+	getAlarm?: () => Promise<number | null>;
+};
+
 export class CheckinScheduler {
 	private state: DurableObjectState;
 	private env: Bindings;
@@ -126,9 +130,16 @@ export class CheckinScheduler {
 				(await this.state.storage.get<string>(
 					PRICING_SYNC_LAST_RUN_DATE_KEY,
 				)) ?? null;
+			const currentAlarmAt = await (
+				this.state.storage as StorageWithGetAlarm
+			).getAlarm?.();
 			return new Response(
 				JSON.stringify({
 					ok: true,
+					current_alarm_at:
+						typeof currentAlarmAt === "number"
+							? new Date(currentAlarmAt).toISOString()
+							: null,
 					last_run_date: lastRunDate,
 					checkin_last_run_date: lastRunDate,
 					channel_refresh_last_run_date: channelRefreshLastRunDate,
@@ -148,8 +159,7 @@ export class CheckinScheduler {
 
 	private async handleAlarm(): Promise<void> {
 		const now = new Date();
-		let pendingError: unknown = null;
-		try {
+		await this.runSchedulerTask("checkin", async () => {
 			const checkinScheduleTime = await getCheckinScheduleTime(this.env.DB);
 			const checkinLastRunDate =
 				(await this.state.storage.get<string>(LAST_RUN_DATE_KEY)) ?? null;
@@ -178,6 +188,9 @@ export class CheckinScheduler {
 				});
 				await this.state.storage.put(LAST_RUN_DATE_KEY, beijingDateString(now));
 			}
+		});
+
+		await this.runSchedulerTask("refresh-active", async () => {
 			const channelRefreshEnabled = await getChannelRefreshEnabled(this.env.DB);
 			if (channelRefreshEnabled) {
 				const channelRefreshScheduleTime = await getChannelRefreshScheduleTime(
@@ -232,6 +245,9 @@ export class CheckinScheduler {
 					);
 				}
 			}
+		});
+
+		await this.runSchedulerTask("verify-disabled", async () => {
 			const channelRecoveryEnabled = await getChannelRecoveryProbeEnabled(
 				this.env.DB,
 			);
@@ -292,6 +308,9 @@ export class CheckinScheduler {
 					);
 				}
 			}
+		});
+
+		await this.runSchedulerTask("backup", async () => {
 			const backupEnabled = await getBackupScheduleEnabled(this.env.DB);
 			if (backupEnabled) {
 				const backupScheduleTime = await getBackupScheduleTime(this.env.DB);
@@ -311,6 +330,9 @@ export class CheckinScheduler {
 					}
 				}
 			}
+		});
+
+		await this.runSchedulerTask("pricing-sync", async () => {
 			const pricingSettings = await getPricingSettings(this.env.DB);
 			if (pricingSettings.sync_enabled) {
 				const pricingSyncLastRunDate =
@@ -352,12 +374,19 @@ export class CheckinScheduler {
 					}
 				}
 			}
-		} catch (error) {
-			pendingError = error;
-		}
+		});
+
 		await this.reschedule(now);
-		if (pendingError) {
-			throw pendingError;
+	}
+
+	private async runSchedulerTask(
+		name: string,
+		task: () => Promise<void>,
+	): Promise<void> {
+		try {
+			await task();
+		} catch (error) {
+			console.error("[checkin-scheduler] task failed", name, error);
 		}
 	}
 
