@@ -360,13 +360,6 @@ const recoveryFailureStageOrder: RecoveryFailureStageKey[] = [
 	"recovery",
 ];
 
-const recoveryFailureStageLabels: Record<RecoveryFailureStageKey, string> = {
-	connectivity: "连接验证",
-	capability: "能力验证",
-	service: "服务验证",
-	recovery: "恢复评估",
-};
-
 const normalizeCleanupSignatureText = (
 	value: string | number | null | undefined,
 ) =>
@@ -409,6 +402,104 @@ const appendUniqueCleanupEvidence = (
 	target.push(normalized);
 };
 
+const genericCleanupDisplayCodePattern =
+	/^(auth_failed|http_error|request_failed|service_error|unknown_error|upstream_error|upstream_http_\d+)$/iu;
+
+const cleanupDisplayPartSeparators = /[|,，;；]+/gu;
+const cleanupHttpStatusPattern = /^HTTP\s*(\d{3})$/iu;
+const cleanupHttpStatusPrefixPattern = /^HTTP\s*(\d{3})\s*[:：-]\s*(.+)$/iu;
+const cleanupRequestContextPattern =
+	/^(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\s+\S+/iu;
+const cleanupVolatileContextPattern =
+	/^(request|trace|reference|ref|request[\s_-]*id|trace[\s_-]*id)\s*[:=#-]?\s*[A-Za-z0-9_.-]+$/iu;
+
+const normalizeCleanupDisplayPart = (value: string) =>
+	value
+		.replace(/^error\s+code\s*[:：]\s*/iu, "")
+		.replace(/^error\s*[:：]\s*/iu, "")
+		.replace(/^code\s*[:：]\s*/iu, "")
+		.trim();
+
+const isInformativeCleanupDisplayPart = (value: string) => {
+	if (
+		!value ||
+		/^\d+$/u.test(value) ||
+		cleanupHttpStatusPattern.test(value) ||
+		cleanupRequestContextPattern.test(value) ||
+		cleanupVolatileContextPattern.test(value)
+	) {
+		return false;
+	}
+	return /[a-z\u4e00-\u9fa5]/iu.test(value);
+};
+
+const isCodeLikeCleanupDisplayPart = (value: string) =>
+	/^[a-z][a-z0-9_.-]*$/iu.test(value) && /[_\-.]/u.test(value);
+
+const splitCleanupDisplayParts = (
+	value: string | number | null | undefined,
+) => {
+	const normalized = normalizeCleanupSignatureText(value);
+	if (!normalized) {
+		return [];
+	}
+	const prefixedStatus = normalized.match(cleanupHttpStatusPrefixPattern);
+	if (prefixedStatus?.[1] && prefixedStatus[2]) {
+		return [`HTTP ${prefixedStatus[1]}`, prefixedStatus[2]]
+			.map(normalizeCleanupDisplayPart)
+			.filter(Boolean);
+	}
+	return normalized
+		.split(cleanupDisplayPartSeparators)
+		.map(normalizeCleanupDisplayPart)
+		.filter(Boolean);
+};
+
+const getCleanupDisplaySignature = (
+	values: Array<string | number | null | undefined>,
+	codes: Array<string | number | null | undefined>,
+	httpStatus: number | null | undefined,
+) => {
+	const parts = values.flatMap(splitCleanupDisplayParts);
+	const codeParts = parts.filter((part) => isCodeLikeCleanupDisplayPart(part));
+	const structuredCodes = codes
+		.map((code) => normalizeCleanupSignatureText(code))
+		.filter((code) => isCodeLikeCleanupDisplayPart(code));
+	const reasonParts = parts.filter(
+		(part) =>
+			isInformativeCleanupDisplayPart(part) &&
+			!isCodeLikeCleanupDisplayPart(part),
+	);
+	const requestParts = parts.filter((part) =>
+		cleanupRequestContextPattern.test(part),
+	);
+	const codeCandidates = [
+		...codeParts.filter((code) => !genericCleanupDisplayCodePattern.test(code)),
+		...structuredCodes.filter(
+			(code) => !genericCleanupDisplayCodePattern.test(code),
+		),
+		...codeParts,
+		...structuredCodes,
+	];
+	const display =
+		codeCandidates[0] ??
+		(httpStatus !== null && httpStatus !== undefined
+			? `HTTP ${httpStatus}`
+			: "unknown_error");
+	const evidence: string[] = [];
+	if (httpStatus !== null && httpStatus !== undefined) {
+		appendUniqueCleanupEvidence(evidence, `HTTP ${httpStatus}`);
+	}
+	appendUniqueCleanupEvidence(evidence, display);
+	for (const reasonPart of reasonParts) {
+		appendUniqueCleanupEvidence(evidence, reasonPart);
+	}
+	for (const requestPart of requestParts) {
+		appendUniqueCleanupEvidence(evidence, requestPart);
+	}
+	return { display, evidence };
+};
+
 export const buildRecoveryCleanupGroups = (
 	items: SiteVerificationResult[],
 ): RecoveryCleanupGroup[] => {
@@ -417,7 +508,7 @@ export const buildRecoveryCleanupGroups = (
 		if (item.verdict === "recoverable") {
 			continue;
 		}
-		const [stageKey, stage] = getPrimaryRecoveryFailureStage(item);
+		const [, stage] = getPrimaryRecoveryFailureStage(item);
 		const failedAttempt = getLastFailedVerificationAttempt(item);
 		const httpStatus =
 			item.trace.upstream_status ?? failedAttempt?.http_status ?? null;
@@ -435,38 +526,30 @@ export const buildRecoveryCleanupGroups = (
 			normalizeCleanupSignatureText(failedAttempt?.detail_message) ||
 			normalizeCleanupSignatureText(stage.message) ||
 			null;
-		const id = [
-			stageKey,
-			stageCode,
-			httpStatus ?? "-",
-			detailCode,
-			detail ?? "-",
-		]
-			.map((part) => normalizeCleanupKeyPart(part))
-			.join(":");
-		const evidence: string[] = [];
-		if (httpStatus !== null && httpStatus !== undefined) {
-			appendUniqueCleanupEvidence(evidence, `HTTP ${httpStatus}`);
-		}
-		appendUniqueCleanupEvidence(evidence, detailCode);
-		appendUniqueCleanupEvidence(evidence, stageCode);
-		const titleParts = [
-			recoveryFailureStageLabels[stageKey],
-			stageCode,
-			httpStatus !== null && httpStatus !== undefined
-				? `HTTP ${httpStatus}`
-				: null,
-		].filter((part): part is string => Boolean(part));
+		const signature = getCleanupDisplaySignature(
+			[item.trace.detail_message, failedAttempt?.detail_message],
+			[
+				item.trace.detail_code,
+				failedAttempt?.detail_code,
+				stageCode,
+				detailCode,
+			],
+			httpStatus,
+		);
+		const id = normalizeCleanupKeyPart(signature.display);
 		const current = groups.get(id);
 		if (current) {
 			current.items.push(item);
+			for (const evidence of signature.evidence) {
+				appendUniqueCleanupEvidence(current.evidence, evidence);
+			}
 			continue;
 		}
 		groups.set(id, {
 			id,
-			title: titleParts.join(" · "),
+			title: signature.display,
 			detail,
-			evidence,
+			evidence: signature.evidence,
 			items: [item],
 		});
 	}

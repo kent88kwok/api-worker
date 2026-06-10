@@ -21,4 +21,16 @@ describe("site verification attempts source", () => {
 		expect(channelsViewSource).toContain("getVerificationAttemptSummary");
 		expect(channelsViewSource).toContain("getVerificationAttempts");
 	});
+
+	it("站点任务报告的尝试记录会展示详细错误信息", () => {
+		expect(channelsViewSource).toContain("attempt.detail_code");
+		expect(channelsViewSource).toContain("attempt.detail_message");
+	});
+
+	it("检测尝试记录使用固定高度并在内容过长时内部滚动", () => {
+		expect(appSource).toContain("max-h-72 space-y-2 overflow-y-auto pr-1");
+		expect(channelsViewSource).toContain(
+			"max-h-36 space-y-1 overflow-y-auto pr-1",
+		);
+	});
 });

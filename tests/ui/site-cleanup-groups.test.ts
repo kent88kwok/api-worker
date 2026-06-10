@@ -136,13 +136,333 @@ describe("disabled site cleanup grouping", () => {
 			["quota-a", "quota-b"],
 			["network-a"],
 		]);
-		expect(groups[0].title).toContain("服务验证");
-		expect(groups[0].title).toContain("upstream_http_429");
+		expect(groups[0].title).toBe("insufficient_quota");
+		expect(groups[0].title).not.toContain("服务验证");
+		expect(groups[0].title).not.toContain("upstream_http_429");
 		expect(groups[0].evidence).toEqual(
-			expect.arrayContaining(["HTTP 429", "upstream_http_429"]),
+			expect.arrayContaining(["HTTP 429", "insufficient_quota"]),
 		);
 		expect(groups[0].detail).toBe("HTTP 429 | insufficient_quota");
 		expect(groups[0].title).not.toContain("余额");
+	});
+
+	it("分组标题优先展示上游原始英文错误码，而不是泛化错误码", () => {
+		const authFailed = baseResult({
+			site_id: "auth-a",
+			site_name: "鉴权站点 A",
+			stages: {
+				...baseResult({}).stages,
+				service: {
+					status: "fail",
+					code: "auth_failed",
+					message: "真实服务验证失败，HTTP 401。",
+				},
+				recovery: {
+					status: "fail",
+					code: "auth_failed",
+					message: "站点尚未通过服务验证，当前不能恢复。",
+				},
+			},
+			attempts: [
+				{
+					model: "gpt-4.1",
+					request_model: "gpt-4.1",
+					request_entry_format: "openai_chat",
+					endpoint_type: "chat",
+					provider: "openai",
+					status: "failed",
+					http_status: 401,
+					detail_code: "auth_failed",
+					detail_message: "invalid_api_key",
+					latency_ms: 22,
+				},
+			],
+			trace: {
+				latency_ms: 22,
+				upstream_status: 401,
+				detail_code: "auth_failed",
+				detail_message: "invalid_api_key",
+			},
+		});
+
+		const groups = buildRecoveryCleanupGroups([authFailed]);
+
+		expect(groups).toHaveLength(1);
+		expect(groups[0].title).toBe("invalid_api_key");
+		expect(groups[0].title).not.toContain("auth_failed");
+	});
+
+	it("从 HTTP、原因和请求路径拼接的详情中只抽取错误码作为分组标题", () => {
+		const authDisabled = baseResult({
+			site_id: "auth-disabled",
+			site_name: "停用密钥站点",
+			stages: {
+				...baseResult({}).stages,
+				service: {
+					status: "fail",
+					code: "auth_failed",
+					message: "真实服务验证被上游鉴权拒绝。",
+				},
+				recovery: {
+					status: "fail",
+					code: "auth_failed",
+					message: "站点尚未通过服务验证，当前不能恢复。",
+				},
+			},
+			attempts: [
+				{
+					model: "gpt-4.1",
+					request_model: "gpt-4.1",
+					request_entry_format: "openai_chat",
+					endpoint_type: "chat",
+					provider: "openai",
+					status: "failed",
+					http_status: 401,
+					detail_code: "auth_failed",
+					detail_message: "API key is disabled",
+					latency_ms: 24,
+				},
+			],
+			trace: {
+				latency_ms: 24,
+				upstream_status: 401,
+				detail_code: "auth_failed",
+				detail_message:
+					"HTTP 401 | API key is disabled | POST /v1/chat/completions",
+			},
+		});
+
+		const groups = buildRecoveryCleanupGroups([authDisabled]);
+
+		expect(groups).toHaveLength(1);
+		expect(groups[0].title).toBe("auth_failed");
+		expect(groups[0].title).not.toContain("API key is disabled");
+		expect(groups[0].title).not.toContain("POST /v1/chat/completions");
+		expect(groups[0].title).not.toContain("HTTP 401");
+		expect(groups[0].evidence).toEqual(
+			expect.arrayContaining([
+				"HTTP 401",
+				"API key is disabled",
+				"POST /v1/chat/completions",
+			]),
+		);
+	});
+
+	it("同一错误码不同请求路径仍合并为一组，避免按请求上下文拆分", () => {
+		const chatFailure = baseResult({
+			site_id: "auth-chat",
+			site_name: "Chat 鉴权站点",
+			attempts: [
+				{
+					model: "gpt-4.1",
+					request_model: "gpt-4.1",
+					request_entry_format: "openai_chat",
+					endpoint_type: "chat",
+					provider: "openai",
+					status: "failed",
+					http_status: 401,
+					detail_code: "auth_failed",
+					detail_message: "API key is disabled",
+					latency_ms: 24,
+				},
+			],
+			trace: {
+				latency_ms: 24,
+				upstream_status: 401,
+				detail_code: "auth_failed",
+				detail_message:
+					"HTTP 401 | API key is disabled | POST /v1/chat/completions",
+			},
+		});
+		const responsesFailure = baseResult({
+			site_id: "auth-responses",
+			site_name: "Responses 鉴权站点",
+			attempts: [
+				{
+					model: "gpt-4.1",
+					request_model: "gpt-4.1",
+					request_entry_format: "openai_responses",
+					endpoint_type: "responses",
+					provider: "openai",
+					status: "failed",
+					http_status: 401,
+					detail_code: "auth_failed",
+					detail_message: "API key is disabled",
+					latency_ms: 26,
+				},
+			],
+			trace: {
+				latency_ms: 26,
+				upstream_status: 401,
+				detail_code: "auth_failed",
+				detail_message: "HTTP 401 | API key is disabled | POST /v1/responses",
+			},
+		});
+
+		const groups = buildRecoveryCleanupGroups([chatFailure, responsesFailure]);
+
+		expect(groups).toHaveLength(1);
+		expect(groups[0].title).toBe("auth_failed");
+		expect(groupSiteIds(groups)).toEqual([["auth-chat", "auth-responses"]]);
+	});
+
+	it("没有上游原始码时使用结构化错误码，并忽略 HTTP 状态差异", () => {
+		const authWithoutReason = baseResult({
+			site_id: "auth-no-reason",
+			site_name: "无详情鉴权站点",
+			stages: {
+				...baseResult({}).stages,
+				service: {
+					status: "fail",
+					code: "auth_failed",
+					message: "真实服务验证被上游鉴权拒绝。",
+				},
+				recovery: {
+					status: "fail",
+					code: "auth_failed",
+					message: "站点尚未通过服务验证，当前不能恢复。",
+				},
+			},
+			attempts: [
+				{
+					model: "gpt-4.1",
+					request_model: "gpt-4.1",
+					request_entry_format: "openai_chat",
+					endpoint_type: "chat",
+					provider: "openai",
+					status: "failed",
+					http_status: 401,
+					detail_code: "auth_failed",
+					detail_message: null,
+					latency_ms: 24,
+				},
+			],
+			trace: {
+				latency_ms: 24,
+				upstream_status: 401,
+				detail_code: "auth_failed",
+				detail_message: null,
+			},
+		});
+		const authForbidden = baseResult({
+			...authWithoutReason,
+			site_id: "auth-forbidden",
+			site_name: "无详情禁用站点",
+			attempts: [
+				{
+					...authWithoutReason.attempts[0],
+					http_status: 403,
+					latency_ms: 28,
+				},
+			],
+			trace: {
+				latency_ms: 28,
+				upstream_status: 403,
+				detail_code: "auth_failed",
+				detail_message: null,
+			},
+		});
+
+		const groups = buildRecoveryCleanupGroups([authWithoutReason, authForbidden]);
+
+		expect(groups).toHaveLength(1);
+		expect(groups[0].title).toBe("auth_failed");
+		expect(groups[0].title).not.toContain("HTTP 401 · HTTP 401");
+		expect(groupSiteIds(groups)).toEqual([
+			["auth-no-reason", "auth-forbidden"],
+		]);
+	});
+
+	it("同一原始错误码不同详情仍合并为一组，避免分组过碎", () => {
+		const first = baseResult({
+			site_id: "quota-a",
+			site_name: "额度站点 A",
+			attempts: [
+				{
+					model: "gpt-4.1",
+					request_model: "gpt-4.1",
+					request_entry_format: "openai_chat",
+					endpoint_type: "chat",
+					provider: "openai",
+					status: "failed",
+					http_status: 429,
+					detail_code: "upstream_http_429",
+					detail_message: "insufficient_quota | request req-a",
+					latency_ms: 31,
+				},
+			],
+			trace: {
+				latency_ms: 31,
+				upstream_status: 429,
+				detail_code: "upstream_http_429",
+				detail_message: "HTTP 429 | insufficient_quota | request req-a",
+			},
+		});
+		const second = baseResult({
+			site_id: "quota-b",
+			site_name: "额度站点 B",
+			attempts: [
+				{
+					model: "gpt-4.1",
+					request_model: "gpt-4.1",
+					request_entry_format: "openai_chat",
+					endpoint_type: "chat",
+					provider: "openai",
+					status: "failed",
+					http_status: 429,
+					detail_code: "upstream_http_429",
+					detail_message: "insufficient_quota | request req-b",
+					latency_ms: 36,
+				},
+			],
+			trace: {
+				latency_ms: 36,
+				upstream_status: 429,
+				detail_code: "upstream_http_429",
+				detail_message: "HTTP 429 | insufficient_quota | request req-b",
+			},
+		});
+
+		const groups = buildRecoveryCleanupGroups([first, second]);
+
+		expect(groups).toHaveLength(1);
+		expect(groups[0].title).toBe("insufficient_quota");
+		expect(groupSiteIds(groups)).toEqual([["quota-a", "quota-b"]]);
+	});
+
+	it("同一原始错误码跨验证阶段也合并为一组，减少可见分组数量", () => {
+		const serviceFailure = baseResult({
+			site_id: "service-quota",
+			site_name: "服务阶段额度站点",
+		});
+		const connectivityFailure = baseResult({
+			site_id: "connectivity-quota",
+			site_name: "连接阶段额度站点",
+			stages: {
+				...baseResult({}).stages,
+				connectivity: {
+					status: "fail",
+					code: "upstream_http_429",
+					message: "连通性检查拿到上游 429。",
+				},
+				service: {
+					status: "pass",
+					code: "service_ok",
+					message: "服务验证跳过。",
+				},
+			},
+		});
+
+		const groups = buildRecoveryCleanupGroups([
+			serviceFailure,
+			connectivityFailure,
+		]);
+
+		expect(groups).toHaveLength(1);
+		expect(groups[0].title).toBe("insufficient_quota");
+		expect(groupSiteIds(groups)).toEqual([
+			["service-quota", "connectivity-quota"],
+		]);
 	});
 
 	it("没有上游尝试记录时，使用结构化阶段代码作为分组签名", () => {
@@ -199,6 +519,14 @@ describe("disabled site cleanup grouping", () => {
 		expect(channelsViewSource).toContain("删除当前分组");
 		expect(channelsViewSource).toContain("overflow-x-auto");
 		expect(channelsViewSource).toContain("shrink-0 whitespace-nowrap");
+		expect(channelsViewSource).toContain(
+			"md:grid-cols-[minmax(0,0.85fr)_minmax(0,1.35fr)_auto]",
+		);
+		expect(channelsViewSource).not.toContain("cleanupGroupBySiteId");
+		expect(channelsViewSource).not.toContain(
+			'{group?.title ?? "未分组"}',
+		);
+		expect(channelsViewSource).not.toContain('group.evidence.join(" · ")');
 		expect(channelsViewSource).toContain("onCleanupDisabledAll");
 		expect(appSource).toContain("requestCleanupDisabledAll");
 		expect(appSource).toContain("site:cleanupDisabledAll");

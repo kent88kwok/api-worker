@@ -286,7 +286,7 @@ const renderVerificationAttemptDetails = (item: SiteVerificationResult) => {
 				格式：{summary.formats.length > 0 ? summary.formats.join("、") : "-"}
 			</p>
 			{attempts.length > 0 ? (
-				<div class="space-y-1">
+				<div class="max-h-36 space-y-1 overflow-y-auto pr-1">
 					{attempts.map((attempt, index) => (
 						<p
 							class="break-words text-[11px] leading-5 text-[color:var(--app-ink-muted)]"
@@ -302,6 +302,7 @@ const renderVerificationAttemptDetails = (item: SiteVerificationResult) => {
 								? ` -> ${attempt.request_model}`
 								: ""}
 							{attempt.detail_code ? ` · ${attempt.detail_code}` : ""}
+							{attempt.detail_message ? ` · ${attempt.detail_message}` : ""}
 						</p>
 					))}
 				</div>
@@ -599,15 +600,6 @@ export const ChannelsView = ({
 	const visibleCleanupItems = activeCleanupGroup
 		? activeCleanupGroup.items
 		: stillFailedRecoveryItems;
-	const cleanupGroupBySiteId = useMemo(() => {
-		const next = new Map<string, RecoveryCleanupGroup>();
-		for (const group of recoveryCleanupGroups) {
-			for (const item of group.items) {
-				next.set(item.site_id, group);
-			}
-		}
-		return next;
-	}, [recoveryCleanupGroups]);
 	const [visibleColumns, setVisibleColumns] = useState(() => {
 		if (typeof window === "undefined") {
 			return siteColumnDefaults;
@@ -2111,18 +2103,16 @@ export const ChannelsView = ({
 											</Button>
 										</div>
 										<div class="overflow-hidden rounded-xl border border-white/70 bg-white/90">
-											<div class="hidden border-b border-slate-100/80 bg-slate-50/80 px-4 py-2 text-[11px] font-semibold text-[color:var(--app-ink-muted)] md:grid md:grid-cols-[minmax(0,0.85fr)_minmax(0,1.35fr)_minmax(0,0.85fr)_auto] md:gap-3">
+											<div class="hidden border-b border-slate-100/80 bg-slate-50/80 px-4 py-2 text-[11px] font-semibold text-[color:var(--app-ink-muted)] md:grid md:grid-cols-[minmax(0,0.85fr)_minmax(0,1.35fr)_auto] md:gap-3">
 												<p>站点</p>
 												<p>问题</p>
-												<p>分组</p>
 												<p class="text-right">操作</p>
 											</div>
 											<div class="divide-y divide-slate-100/80">
 												{visibleCleanupItems.map((item) => {
-													const group = cleanupGroupBySiteId.get(item.site_id);
 													return (
 														<div
-															class="grid gap-3 px-4 py-3 md:grid-cols-[minmax(0,0.85fr)_minmax(0,1.35fr)_minmax(0,0.85fr)_auto] md:items-start"
+															class="grid gap-3 px-4 py-3 md:grid-cols-[minmax(0,0.85fr)_minmax(0,1.35fr)_auto] md:items-start"
 															key={item.site_id}
 														>
 															<div class="min-w-0">
@@ -2158,19 +2148,6 @@ export const ChannelsView = ({
 																<div class="mt-2">
 																	{renderVerificationAttemptDetails(item)}
 																</div>
-															</div>
-															<div class="min-w-0">
-																<p class="text-[11px] font-semibold text-[color:var(--app-ink-muted)] md:hidden">
-																	分组
-																</p>
-																<p class="mt-1 break-words text-xs font-semibold text-[color:var(--app-ink)] md:mt-0">
-																	{group?.title ?? "未分组"}
-																</p>
-																{group?.evidence.length ? (
-																	<p class="mt-1 break-words text-[11px] text-[color:var(--app-ink-muted)]">
-																		{group.evidence.join(" · ")}
-																	</p>
-																) : null}
 															</div>
 															<div class="flex items-start justify-end">
 																<Button

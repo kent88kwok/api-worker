@@ -4556,7 +4556,7 @@ const App = () => {
 											</p>
 										</div>
 									</div>
-									<div class="mt-3 space-y-2">
+									<div class="mt-3 max-h-72 space-y-2 overflow-y-auto pr-1">
 										{attempts.length === 0 ? (
 											<p class="text-xs text-[color:var(--app-ink-muted)]">
 												当前没有可展示的逐次尝试日志。
