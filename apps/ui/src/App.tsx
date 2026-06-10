@@ -33,6 +33,7 @@ import {
 } from "./core/constants";
 import {
 	filterSites,
+	getPrimaryVerificationIssue,
 	getVerificationAttemptStatusLabel,
 	getVerificationAttemptSummary,
 	getVerificationAttempts,
@@ -44,6 +45,7 @@ import {
 	getVerificationStageTone,
 	getVerificationVerdictLabel,
 	summarizeVerificationResults,
+	type RecoveryCleanupGroup,
 	type SiteSortState,
 	sortSites,
 } from "./core/sites";
@@ -2602,6 +2604,216 @@ const App = () => {
 		[handleSiteDelete, openConfirm],
 	);
 
+	const removeSitesFromVerifyDisabledReport = useCallback(
+		(siteIds: string[]) => {
+			if (siteIds.length === 0) {
+				return;
+			}
+			const removedIds = new Set(siteIds);
+			setSiteTaskReports((prev) => {
+				const current = prev["verify-disabled"];
+				if (!current || current.kind !== "verify-disabled") {
+					return prev;
+				}
+				const nextItems = current.report.items.filter(
+					(item) => !removedIds.has(item.site_id),
+				);
+				const summary = summarizeVerificationResults(nextItems);
+				return {
+					...prev,
+					"verify-disabled": {
+						...current,
+						report: {
+							...current.report,
+							items: nextItems,
+							summary,
+						},
+						progress: {
+							...current.progress,
+							total: nextItems.length,
+							completed: nextItems.length,
+							success: summary.recoverable,
+							warning: 0,
+							failed: summary.not_recoverable + summary.failed,
+							skipped: summary.skipped,
+							current_site_id: null,
+							current_site_name: null,
+							updated_at: current.runs_at,
+						},
+					},
+				};
+			});
+		},
+		[],
+	);
+
+	const handleCleanupDisabledSites = useCallback(
+		async (
+			items: SiteVerificationResult[],
+			actionKey: string,
+			successMessage: (count: number) => string,
+		) => {
+			const uniqueItems = Array.from(
+				new Map(items.map((item) => [item.site_id, item])).values(),
+			);
+			if (uniqueItems.length === 0) {
+				pushNotice("info", "当前没有可清理的停用站点");
+				return;
+			}
+			if (isActionPending(actionKey)) {
+				return;
+			}
+			startAction(actionKey);
+			try {
+				const settled = await Promise.allSettled(
+					uniqueItems.map(async (item) => {
+						await apiFetch(`/api/sites/${item.site_id}`, { method: "DELETE" });
+						return item.site_id;
+					}),
+				);
+				const successIds = settled
+					.filter(
+						(item): item is PromiseFulfilledResult<string> =>
+							item.status === "fulfilled",
+					)
+					.map((item) => item.value);
+				const failedCount = settled.length - successIds.length;
+				await Promise.all([loadSites(), loadModels()]);
+				removeSitesFromVerifyDisabledReport(successIds);
+				if (editingSite && successIds.includes(editingSite.id)) {
+					closeSiteModal();
+				}
+				if (failedCount > 0) {
+					pushNotice(
+						"warning",
+						`停用站点清理完成，成功 ${successIds.length} 个，失败 ${failedCount} 个。`,
+					);
+					return;
+				}
+				pushNotice("success", successMessage(successIds.length));
+			} catch (error) {
+				pushNotice("error", (error as Error).message);
+			} finally {
+				endAction(actionKey);
+			}
+		},
+		[
+			apiFetch,
+			closeSiteModal,
+			editingSite,
+			endAction,
+			isActionPending,
+			loadModels,
+			loadSites,
+			pushNotice,
+			removeSitesFromVerifyDisabledReport,
+			startAction,
+		],
+	);
+
+	const requestCleanupDisabledSite = useCallback(
+		(site: SiteVerificationResult) => {
+			openConfirm({
+				title: "清理停用站点",
+				message: `确定删除“${site.site_name || "该站点"}”吗？此操作不可恢复。`,
+				confirmLabel: "清理站点",
+				tone: "error",
+				onConfirm: () =>
+					handleCleanupDisabledSites(
+						[site],
+						buildActionKey("site:cleanupDisabled", site.site_id),
+						() => `已清理停用站点：${site.site_name}`,
+					),
+			});
+		},
+		[handleCleanupDisabledSites, openConfirm],
+	);
+
+	const requestCleanupDisabledGroup = useCallback(
+		(group: RecoveryCleanupGroup) => {
+			const groupActionKey = buildActionKey(
+				"site:cleanupDisabledGroup",
+				group.id,
+			);
+			openConfirm({
+				title: "删除当前分组",
+				message: `将删除当前分组“${group.title}”中的停用站点，此操作不可恢复。`,
+				previewSummary: `当前分组共有 ${group.items.length} 个可清理站点`,
+				previewItems: group.items.map((item) => ({
+					id: item.site_id,
+					title: item.site_name,
+					detail: getPrimaryVerificationIssue(item),
+					actionLabel: "单独清理",
+					actionKey: buildActionKey("site:cleanupDisabled", item.site_id),
+					onAction: async () => {
+						await handleCleanupDisabledSites(
+							[item],
+							buildActionKey("site:cleanupDisabled", item.site_id),
+							() => `已清理停用站点：${item.site_name}`,
+						);
+						setConfirmState(null);
+					},
+				})),
+				previewQuestion: "确认删除当前分组全部停用站点吗？",
+				confirmLabel: "删除当前分组",
+				tone: "error",
+				onConfirm: () =>
+					handleCleanupDisabledSites(
+						group.items,
+						groupActionKey,
+						(count) => `已清理 ${count} 个停用站点。`,
+					),
+			});
+		},
+		[handleCleanupDisabledSites, openConfirm],
+	);
+
+	const requestCleanupDisabledAll = useCallback(
+		(groups: RecoveryCleanupGroup[]) => {
+			const allItems = groups.flatMap((group) => group.items);
+			const uniqueItems = Array.from(
+				new Map(allItems.map((item) => [item.site_id, item])).values(),
+			);
+			if (uniqueItems.length === 0) {
+				pushNotice("info", "当前没有可清理的停用站点");
+				return;
+			}
+			const actionKey = buildActionKey("site:cleanupDisabledAll");
+			openConfirm({
+				title: "一键删除全部停用站点",
+				message: "将删除本次检查中所有仍未恢复的停用站点，此操作不可恢复。",
+				previewSummary: `当前共有 ${uniqueItems.length} 个可清理站点，来自 ${groups.length} 个分组`,
+				previewItems: groups.flatMap((group) =>
+					group.items.map((item) => ({
+						id: item.site_id,
+						title: item.site_name,
+						detail: `${group.title} · ${getPrimaryVerificationIssue(item)}`,
+						actionLabel: "单独清理",
+						actionKey: buildActionKey("site:cleanupDisabled", item.site_id),
+						onAction: async () => {
+							await handleCleanupDisabledSites(
+								[item],
+								buildActionKey("site:cleanupDisabled", item.site_id),
+								() => `已清理停用站点：${item.site_name}`,
+							);
+							setConfirmState(null);
+						},
+					})),
+				),
+				previewQuestion: "确认删除全部未恢复停用站点吗？",
+				confirmLabel: "一键删除全部",
+				tone: "error",
+				onConfirm: () =>
+					handleCleanupDisabledSites(
+						uniqueItems,
+						actionKey,
+						(count) => `已清理 ${count} 个停用站点。`,
+					),
+			});
+		},
+		[handleCleanupDisabledSites, openConfirm, pushNotice],
+	);
+
 	const handleSiteToggle = useCallback(
 		async (id: string, status: string) => {
 			const actionKey = buildActionKey("site:toggle", id);
@@ -4017,6 +4229,9 @@ const App = () => {
 					onRefreshAll={handleRefreshActiveSites}
 					onDisableFailedSite={handleDisableFailedSite}
 					onDisableAllFailedSites={requestDisableAllFailedSites}
+					onCleanupDisabledSite={requestCleanupDisabledSite}
+					onCleanupDisabledGroup={requestCleanupDisabledGroup}
+					onCleanupDisabledAll={requestCleanupDisabledAll}
 					onClearCoolingModel={handleClearCoolingModel}
 					onSetModelStatus={handleSetModelStatus}
 				/>

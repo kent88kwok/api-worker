@@ -22,6 +22,7 @@ import {
 	Tooltip,
 } from "../components/ui";
 import {
+	buildRecoveryCleanupGroups,
 	getSiteCheckinLabel,
 	getSiteCoolingMaxRemainingSeconds,
 	getSiteCoolingModelCount,
@@ -41,6 +42,7 @@ import {
 	getVerificationSeverityLabel,
 	getVerificationSeverityRank,
 	getVerificationVerdictLabel,
+	type RecoveryCleanupGroup,
 	type SiteSortKey,
 	type SiteSortState,
 } from "../core/sites";
@@ -101,6 +103,9 @@ type ChannelsViewProps = {
 	onRefreshAll: () => void;
 	onDisableFailedSite: (site: SiteVerificationResult) => void;
 	onDisableAllFailedSites: () => void;
+	onCleanupDisabledSite: (site: SiteVerificationResult) => void;
+	onCleanupDisabledGroup: (group: RecoveryCleanupGroup) => void;
+	onCleanupDisabledAll: (groups: RecoveryCleanupGroup[]) => void;
 	onClearCoolingModel: (siteId: string, model: string) => void;
 	onSetModelStatus: (
 		channelId: string,
@@ -492,6 +497,9 @@ export const ChannelsView = ({
 	onRefreshAll,
 	onDisableFailedSite,
 	onDisableAllFailedSites,
+	onCleanupDisabledSite,
+	onCleanupDisabledGroup,
+	onCleanupDisabledAll,
 	onClearCoolingModel,
 	onSetModelStatus,
 }: ChannelsViewProps) => {
@@ -563,6 +571,43 @@ export const ChannelsView = ({
 					(item) => item.verdict !== "recoverable",
 				)
 			: [];
+	const recoveryCleanupGroups = useMemo(
+		() => buildRecoveryCleanupGroups(stillFailedRecoveryItems),
+		[stillFailedRecoveryItems],
+	);
+	const [activeCleanupGroupId, setActiveCleanupGroupId] = useState<
+		string | null
+	>(null);
+	const activeCleanupGroup = useMemo(() => {
+		if (!activeCleanupGroupId) {
+			return null;
+		}
+		return (
+			recoveryCleanupGroups.find(
+				(group) => group.id === activeCleanupGroupId,
+			) ?? null
+		);
+	}, [activeCleanupGroupId, recoveryCleanupGroups]);
+	useEffect(() => {
+		if (
+			activeCleanupGroupId &&
+			!recoveryCleanupGroups.some((group) => group.id === activeCleanupGroupId)
+		) {
+			setActiveCleanupGroupId(null);
+		}
+	}, [activeCleanupGroupId, recoveryCleanupGroups]);
+	const visibleCleanupItems = activeCleanupGroup
+		? activeCleanupGroup.items
+		: stillFailedRecoveryItems;
+	const cleanupGroupBySiteId = useMemo(() => {
+		const next = new Map<string, RecoveryCleanupGroup>();
+		for (const group of recoveryCleanupGroups) {
+			for (const item of group.items) {
+				next.set(item.site_id, group);
+			}
+		}
+		return next;
+	}, [recoveryCleanupGroups]);
 	const [visibleColumns, setVisibleColumns] = useState(() => {
 		if (typeof window === "undefined") {
 			return siteColumnDefaults;
@@ -1960,55 +2005,197 @@ export const ChannelsView = ({
 									))
 								)}
 							</div>
-							<div class="space-y-2">
-								<p class="text-[11px] font-semibold text-[color:var(--app-ink-muted)]">
-									仍未恢复
-								</p>
-								{stillFailedRecoveryItems.length === 0 ? (
+							<div class="space-y-3">
+								<div class="flex flex-col gap-3 rounded-xl border border-rose-100 bg-rose-50/70 px-4 py-3 md:flex-row md:items-center md:justify-between">
+									<div class="min-w-0">
+										<p class="text-[11px] font-semibold text-rose-700">
+											清理停用站点
+										</p>
+										<p class="mt-1 break-words text-xs text-rose-700/80">
+											共 {stillFailedRecoveryItems.length} 个未恢复站点 ·{" "}
+											{recoveryCleanupGroups.length}{" "}
+											个分组，可全部删除、按组删除或单独删除。
+										</p>
+									</div>
+									<Button
+										size="sm"
+										type="button"
+										variant="danger"
+										class="h-8 shrink-0 px-3 text-xs"
+										disabled={
+											recoveryCleanupGroups.length === 0 ||
+											isActionPending("site:cleanupDisabledAll")
+										}
+										onClick={() => onCleanupDisabledAll(recoveryCleanupGroups)}
+									>
+										{isActionPending("site:cleanupDisabledAll")
+											? "删除中..."
+											: "一键删除全部"}
+									</Button>
+								</div>
+								{recoveryCleanupGroups.length === 0 ? (
 									<p class="text-xs text-[color:var(--app-ink-muted)]">
 										本次已全部恢复。
 									</p>
 								) : (
-									stillFailedRecoveryItems.map((item) => (
+									<div class="space-y-3">
 										<div
-											class="grid grid-cols-[minmax(0,0.9fr)_minmax(0,1.5fr)] gap-3 rounded-xl border border-white/60 bg-white/80 px-4 py-3"
-											key={item.site_id}
+											aria-label="清理分组筛选"
+											class="flex min-w-0 items-center gap-2 rounded-xl border border-white/70 bg-white/85 px-3 py-2"
 										>
-											<div class="min-w-0">
-												<p class="truncate text-sm font-semibold text-[color:var(--app-ink)]">
-													{item.site_name}
-												</p>
-												<p class="text-[11px] text-[color:var(--app-ink-muted)]">
-													仍未恢复
-												</p>
-											</div>
-											<div class="min-w-0">
-												<p class="text-[11px] font-semibold text-[color:var(--app-ink-muted)]">
-													问题
-												</p>
-												<p class="mt-1 text-xs text-[color:var(--app-ink)]">
-													{getPrimaryVerificationIssue(item)}
-												</p>
-												{getVerificationFailedTokenIssues(item).length > 0 ? (
-													<div class="mt-2 space-y-1 rounded-lg bg-slate-50/80 px-2.5 py-2">
-														{getVerificationFailedTokenIssues(item).map(
-															(detail, index) => (
-																<p
-																	class="break-words text-[11px] leading-5 text-[color:var(--app-ink-muted)]"
-																	key={`${item.site_id}:recovery-token-failure:${index}`}
-																>
-																	{detail}
-																</p>
-															),
-														)}
-													</div>
-												) : null}
-												<div class="mt-2">
-													{renderVerificationAttemptDetails(item)}
+											<span class="shrink-0 text-[11px] font-semibold text-[color:var(--app-ink-muted)]">
+												分组
+											</span>
+											<div class="min-w-0 flex-1 overflow-x-auto">
+												<div class="flex w-max items-center gap-2">
+													<button
+														aria-pressed={activeCleanupGroupId === null}
+														class={`h-8 shrink-0 whitespace-nowrap cursor-pointer rounded-full border px-3 text-xs font-semibold transition-colors ${
+															activeCleanupGroupId === null
+																? "border-rose-300 bg-rose-100 text-rose-700"
+																: "border-white/70 bg-white/85 text-[color:var(--app-ink-muted)] hover:border-rose-200 hover:text-rose-700"
+														}`}
+														type="button"
+														onClick={() => setActiveCleanupGroupId(null)}
+													>
+														全部 · {stillFailedRecoveryItems.length}
+													</button>
+													{recoveryCleanupGroups.map((group) => (
+														<button
+															aria-pressed={activeCleanupGroupId === group.id}
+															class={`h-8 max-w-[18rem] shrink-0 whitespace-nowrap cursor-pointer rounded-full border px-3 text-xs font-semibold transition-colors md:max-w-[24rem] ${
+																activeCleanupGroupId === group.id
+																	? "border-rose-300 bg-rose-100 text-rose-700"
+																	: "border-white/70 bg-white/85 text-[color:var(--app-ink-muted)] hover:border-rose-200 hover:text-rose-700"
+															}`}
+															key={group.id}
+															type="button"
+															onClick={() => setActiveCleanupGroupId(group.id)}
+														>
+															<span class="block truncate">
+																{group.title} · {group.items.length}
+															</span>
+														</button>
+													))}
 												</div>
 											</div>
+											<Button
+												size="sm"
+												type="button"
+												variant="danger"
+												class="h-8 shrink-0 px-3 text-xs"
+												title={
+													activeCleanupGroup
+														? `当前分组：${activeCleanupGroup.title}`
+														: "选择分组后删除"
+												}
+												disabled={
+													!activeCleanupGroup ||
+													isActionPending(
+														`site:cleanupDisabledGroup:${activeCleanupGroup.id}`,
+													)
+												}
+												onClick={() => {
+													if (!activeCleanupGroup) {
+														return;
+													}
+													onCleanupDisabledGroup(activeCleanupGroup);
+												}}
+											>
+												{activeCleanupGroup &&
+												isActionPending(
+													`site:cleanupDisabledGroup:${activeCleanupGroup.id}`,
+												)
+													? "删除中..."
+													: "删除当前分组"}
+											</Button>
 										</div>
-									))
+										<div class="overflow-hidden rounded-xl border border-white/70 bg-white/90">
+											<div class="hidden border-b border-slate-100/80 bg-slate-50/80 px-4 py-2 text-[11px] font-semibold text-[color:var(--app-ink-muted)] md:grid md:grid-cols-[minmax(0,0.85fr)_minmax(0,1.35fr)_minmax(0,0.85fr)_auto] md:gap-3">
+												<p>站点</p>
+												<p>问题</p>
+												<p>分组</p>
+												<p class="text-right">操作</p>
+											</div>
+											<div class="divide-y divide-slate-100/80">
+												{visibleCleanupItems.map((item) => {
+													const group = cleanupGroupBySiteId.get(item.site_id);
+													return (
+														<div
+															class="grid gap-3 px-4 py-3 md:grid-cols-[minmax(0,0.85fr)_minmax(0,1.35fr)_minmax(0,0.85fr)_auto] md:items-start"
+															key={item.site_id}
+														>
+															<div class="min-w-0">
+																<p class="truncate text-sm font-semibold text-[color:var(--app-ink)]">
+																	{item.site_name}
+																</p>
+																<p class="text-[11px] text-[color:var(--app-ink-muted)]">
+																	仍未恢复
+																</p>
+															</div>
+															<div class="min-w-0">
+																<p class="text-[11px] font-semibold text-[color:var(--app-ink-muted)] md:hidden">
+																	问题
+																</p>
+																<p class="mt-1 break-words text-xs text-[color:var(--app-ink)] md:mt-0">
+																	{getPrimaryVerificationIssue(item)}
+																</p>
+																{getVerificationFailedTokenIssues(item).length >
+																0 ? (
+																	<div class="mt-2 space-y-1 rounded-lg bg-slate-50/80 px-2.5 py-2">
+																		{getVerificationFailedTokenIssues(item).map(
+																			(detail, index) => (
+																				<p
+																					class="break-words text-[11px] leading-5 text-[color:var(--app-ink-muted)]"
+																					key={`${item.site_id}:recovery-token-failure:${index}`}
+																				>
+																					{detail}
+																				</p>
+																			),
+																		)}
+																	</div>
+																) : null}
+																<div class="mt-2">
+																	{renderVerificationAttemptDetails(item)}
+																</div>
+															</div>
+															<div class="min-w-0">
+																<p class="text-[11px] font-semibold text-[color:var(--app-ink-muted)] md:hidden">
+																	分组
+																</p>
+																<p class="mt-1 break-words text-xs font-semibold text-[color:var(--app-ink)] md:mt-0">
+																	{group?.title ?? "未分组"}
+																</p>
+																{group?.evidence.length ? (
+																	<p class="mt-1 break-words text-[11px] text-[color:var(--app-ink-muted)]">
+																		{group.evidence.join(" · ")}
+																	</p>
+																) : null}
+															</div>
+															<div class="flex items-start justify-end">
+																<Button
+																	size="sm"
+																	type="button"
+																	variant="ghost"
+																	class="h-8 px-3 text-xs"
+																	disabled={isActionPending(
+																		`site:cleanupDisabled:${item.site_id}`,
+																	)}
+																	onClick={() => onCleanupDisabledSite(item)}
+																>
+																	{isActionPending(
+																		`site:cleanupDisabled:${item.site_id}`,
+																	)
+																		? "删除中..."
+																		: "删除"}
+																</Button>
+															</div>
+														</div>
+													);
+												})}
+											</div>
+										</div>
+									</div>
 								)}
 							</div>
 						</div>

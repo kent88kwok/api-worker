@@ -339,6 +339,140 @@ export const getVerificationSeverityLabel = (verdict: VerificationVerdict) => {
 	return "正常";
 };
 
+export type RecoveryCleanupGroup = {
+	id: string;
+	title: string;
+	detail: string | null;
+	evidence: string[];
+	items: SiteVerificationResult[];
+};
+
+type RecoveryFailureStageKey =
+	| "connectivity"
+	| "capability"
+	| "service"
+	| "recovery";
+
+const recoveryFailureStageOrder: RecoveryFailureStageKey[] = [
+	"service",
+	"connectivity",
+	"capability",
+	"recovery",
+];
+
+const recoveryFailureStageLabels: Record<RecoveryFailureStageKey, string> = {
+	connectivity: "连接验证",
+	capability: "能力验证",
+	service: "服务验证",
+	recovery: "恢复评估",
+};
+
+const normalizeCleanupSignatureText = (
+	value: string | number | null | undefined,
+) =>
+	String(value ?? "")
+		.replace(/\s+/gu, " ")
+		.trim();
+
+const normalizeCleanupKeyPart = (value: string | number | null | undefined) =>
+	normalizeCleanupSignatureText(value)
+		.toLowerCase()
+		.replace(/[^a-z0-9_\u4e00-\u9fa5]+/giu, "-")
+		.replace(/^-+|-+$/gu, "") || "unknown";
+
+const getPrimaryRecoveryFailureStage = (
+	result: SiteVerificationResult,
+): [
+	RecoveryFailureStageKey,
+	SiteVerificationResult["stages"][RecoveryFailureStageKey],
+] => {
+	const stageKey =
+		recoveryFailureStageOrder.find(
+			(key) => result.stages[key].status === "fail",
+		) ?? "recovery";
+	return [stageKey, result.stages[stageKey]];
+};
+
+const getLastFailedVerificationAttempt = (result: SiteVerificationResult) =>
+	[...getVerificationAttempts(result)]
+		.reverse()
+		.find((attempt) => attempt.status === "failed") ?? null;
+
+const appendUniqueCleanupEvidence = (
+	target: string[],
+	value: string | null,
+) => {
+	const normalized = normalizeCleanupSignatureText(value);
+	if (!normalized || target.includes(normalized)) {
+		return;
+	}
+	target.push(normalized);
+};
+
+export const buildRecoveryCleanupGroups = (
+	items: SiteVerificationResult[],
+): RecoveryCleanupGroup[] => {
+	const groups = new Map<string, RecoveryCleanupGroup>();
+	for (const item of items) {
+		if (item.verdict === "recoverable") {
+			continue;
+		}
+		const [stageKey, stage] = getPrimaryRecoveryFailureStage(item);
+		const failedAttempt = getLastFailedVerificationAttempt(item);
+		const httpStatus =
+			item.trace.upstream_status ?? failedAttempt?.http_status ?? null;
+		const detailCode =
+			normalizeCleanupSignatureText(item.trace.detail_code) ||
+			normalizeCleanupSignatureText(failedAttempt?.detail_code) ||
+			normalizeCleanupSignatureText(stage.code) ||
+			"unknown_error";
+		const stageCode =
+			normalizeCleanupSignatureText(stage.code) ||
+			detailCode ||
+			"unknown_error";
+		const detail =
+			normalizeCleanupSignatureText(item.trace.detail_message) ||
+			normalizeCleanupSignatureText(failedAttempt?.detail_message) ||
+			normalizeCleanupSignatureText(stage.message) ||
+			null;
+		const id = [
+			stageKey,
+			stageCode,
+			httpStatus ?? "-",
+			detailCode,
+			detail ?? "-",
+		]
+			.map((part) => normalizeCleanupKeyPart(part))
+			.join(":");
+		const evidence: string[] = [];
+		if (httpStatus !== null && httpStatus !== undefined) {
+			appendUniqueCleanupEvidence(evidence, `HTTP ${httpStatus}`);
+		}
+		appendUniqueCleanupEvidence(evidence, detailCode);
+		appendUniqueCleanupEvidence(evidence, stageCode);
+		const titleParts = [
+			recoveryFailureStageLabels[stageKey],
+			stageCode,
+			httpStatus !== null && httpStatus !== undefined
+				? `HTTP ${httpStatus}`
+				: null,
+		].filter((part): part is string => Boolean(part));
+		const current = groups.get(id);
+		if (current) {
+			current.items.push(item);
+			continue;
+		}
+		groups.set(id, {
+			id,
+			title: titleParts.join(" · "),
+			detail,
+			evidence,
+			items: [item],
+		});
+	}
+	return Array.from(groups.values());
+};
+
 export const summarizeVerificationResults = (
 	items: SiteVerificationResult[],
 ): SiteVerificationBatchSummary => {
