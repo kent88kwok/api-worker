@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+	buildStopPlan,
 	buildDevHealthTargets,
 	classifyBackgroundDevState,
+	deriveDevPorts,
+	formatBackgroundStatus,
 	resolveChildExitSupervisorAction,
 	shouldRestartUnhealthyService,
 	summarizeHealthChecks,
@@ -23,6 +26,18 @@ describe("dev health helpers", () => {
 				url: "http://127.0.0.1:8787/health",
 			},
 		]);
+	});
+
+	it("derives worker, attempt-worker, ui, and inspector ports from DEV_PORT", () => {
+		const ports = deriveDevPorts({ basePort: 8787 });
+
+		expect(ports).toEqual({
+			workerPort: 8787,
+			attemptWorkerPort: 8788,
+			uiPort: 8789,
+			workerInspectorPort: 9787,
+			attemptInspectorPort: 9788,
+		});
 	});
 
 	it("summarizes a live parent with a dead worker as unhealthy", () => {
@@ -51,6 +66,66 @@ describe("dev health helpers", () => {
 		expect(state.level).toBe("warn");
 		expect(state.state).toBe("degraded");
 		expect(state.message).toContain("父进程运行中");
+	});
+
+	it("classifies residual ports without a live parent as residual instead of stopped", () => {
+		const state = classifyBackgroundDevState({
+			pidRunning: false,
+			healthSummary: null,
+			hasResidualPorts: true,
+		});
+
+		expect(state.level).toBe("warn");
+		expect(state.state).toBe("residual");
+		expect(state.message).toContain("残留");
+	});
+
+	it("formats residual background status without reporting it as fully stopped", () => {
+		const status = formatBackgroundStatus({
+			state: null,
+			healthChecks: [],
+			residualPorts: [{ port: 8787, pid: 1234, commandLine: null }],
+			backgroundStatus: {
+				level: "warn",
+				state: "residual",
+				message: "后台 dev 守护进程未运行，但检测到残留实例",
+			},
+		});
+
+		expect(status.summary).toContain("残留");
+		expect(status.summary).not.toContain("未运行。");
+	});
+
+	it("collects managed residual pids for stop when daemon state is missing", () => {
+		const plan = buildStopPlan({
+			liveState: null,
+			residualPorts: [
+				{ port: 8787, pid: 1234, commandLine: "wrangler dev", managed: true },
+				{ port: 8788, pid: 5678, commandLine: "wrangler dev", managed: true },
+			],
+		});
+
+		expect(plan.kind).toBe("residual");
+		expect(plan.pids).toEqual([1234, 5678]);
+		expect(plan.unmanagedPorts).toEqual([]);
+	});
+
+	it("keeps unmanaged residual ports out of the stop pid list", () => {
+		const plan = buildStopPlan({
+			liveState: null,
+			residualPorts: [
+				{
+					port: 8787,
+					pid: 1234,
+					commandLine: "python -m http.server",
+					managed: false,
+				},
+			],
+		});
+
+		expect(plan.kind).toBe("residual");
+		expect(plan.pids).toEqual([]);
+		expect(plan.unmanagedPorts).toEqual([8787]);
 	});
 
 	it("restarts after grace, failure threshold, and cooldown all allow it", () => {

@@ -141,8 +141,8 @@ bun run dev -- [可选参数]
 - `--skip-ui-build`：跳过 UI 预构建（用于覆盖 `--build-ui` 默认行为）
 - `--bg`：后台启动
 - `--log-mode file|none`：后台日志策略（默认 `file`，写入 `.dev/dev-runner.log`；`none` 表示不写后台日志）
-- `--status`：查看后台运行状态，并探测 Worker `/health` 端口是否可用
-- `--stop`：停止后台运行实例
+- `--status`：查看后台运行状态，并探测 Worker `/health` 端口是否可用；若守护进程已退出但派生端口仍残留，会显示残留实例提示
+- `--stop`：停止后台运行实例；若仅存在残留实例，也会尝试清理
 
 后台守护进程会定时探测本地 `worker`（以及未禁用时的 `attempt-worker`）`/health`。如果父进程仍在但服务端口连续不可用，会在启动宽限期后自动重启异常子进程，并把最近健康检查和自愈重启信息写入 `.dev/dev-runner.json`。可用环境变量调整探测策略：`DEV_HEALTH_CHECK_INTERVAL_MS`、`DEV_HEALTH_CHECK_TIMEOUT_MS`、`DEV_HEALTH_STARTUP_GRACE_MS`、`DEV_HEALTH_RESTART_THRESHOLD`、`DEV_HEALTH_RESTART_COOLDOWN_MS`、`DEV_HEALTH_RESTART_STOP_TIMEOUT_MS`。
 
@@ -197,15 +197,15 @@ bun --filter api-worker-ui dev -- --port 4173
 
 默认端口：
 
-- Worker: `8787`（wrangler dev 默认）
-- Attempt Worker: `8788`
-- UI: `4173`
+- Worker: `8787`（`DEV_PORT`）
+- Attempt Worker: `8788`（`DEV_PORT + 1`）
+- UI: `8789`（`DEV_PORT + 2`）
 
 支持环境变量覆盖（`bun run dev` 生效）：
 
-- `DEV_WORKER_PORT`：主 Worker 端口（默认 `8787`）
-- `DEV_ATTEMPT_WORKER_PORT`：调用执行器端口（默认 `8788`）
-- `DEV_UI_PORT`：UI 端口（默认 `4173`）
+- `DEV_PORT`：本地开发主端口（默认 `8787`）
+
+如果你之前配置过 `DEV_WORKER_PORT`、`DEV_ATTEMPT_WORKER_PORT`、`DEV_UI_PORT`，请迁移到单一 `DEV_PORT`。脚本现在会基于 `DEV_PORT` 自动推导其余端口。
 
 ### 4) 首次本地迁移（推荐）
 

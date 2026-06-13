@@ -4,6 +4,21 @@ export interface DevHealthTarget {
 	url: string;
 }
 
+export interface DerivedDevPorts {
+	workerPort: number;
+	attemptWorkerPort: number;
+	uiPort: number;
+	workerInspectorPort: number;
+	attemptInspectorPort: number;
+}
+
+export interface ResidualPortInfo {
+	port: number;
+	pid: number | null;
+	commandLine?: string | null;
+	managed?: boolean;
+}
+
 export interface DevHealthCheck extends DevHealthTarget {
 	ok: boolean;
 	status?: number | null;
@@ -15,6 +30,8 @@ export function buildDevHealthTargets(input: {
 	attemptWorkerPort: number;
 	skipAttemptWorker: boolean;
 }): DevHealthTarget[];
+
+export function deriveDevPorts(input: { basePort: number }): DerivedDevPorts;
 
 export function summarizeHealthChecks(checks: DevHealthCheck[]): {
 	healthy: boolean;
@@ -50,11 +67,46 @@ export function classifyBackgroundDevState(input: {
 	healthSummary?: {
 		healthy: boolean;
 	} | null;
+	hasResidualPorts?: boolean;
 }): {
 	level: string;
 	state: string;
 	message: string;
 };
+
+export function formatBackgroundStatus(input: {
+	state: { pid: number } | null;
+	healthChecks: DevHealthCheck[];
+	residualPorts: ResidualPortInfo[];
+	backgroundStatus: {
+		level: string;
+		state: string;
+		message: string;
+	};
+}): {
+	summary: string;
+	details?: string[];
+};
+
+export function buildStopPlan(input: {
+	liveState: { pid: number } | null;
+	residualPorts: ResidualPortInfo[];
+}):
+	| {
+			kind: "daemon";
+			pids: number[];
+			unmanagedPorts: number[];
+	  }
+	| {
+			kind: "residual";
+			pids: number[];
+			unmanagedPorts: number[];
+	  }
+	| {
+			kind: "noop";
+			pids: number[];
+			unmanagedPorts: number[];
+	  };
 
 export function resolveChildExitSupervisorAction(input: {
 	shuttingDown: boolean;

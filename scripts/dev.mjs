@@ -16,8 +16,11 @@ import { fileURLToPath } from "node:url";
 
 import { buildBackgroundStateFromArgs } from "./autostart-shared.mjs";
 import {
+	buildStopPlan,
 	buildDevHealthTargets,
 	classifyBackgroundDevState,
+	deriveDevPorts,
+	formatBackgroundStatus,
 	resolveChildExitSupervisorAction,
 	shouldRestartUnhealthyService,
 	summarizeHealthChecks,
@@ -144,14 +147,252 @@ const parsePortFromEnv = (name, fallback) => {
 	return value;
 };
 
-const workerPort = parsePortFromEnv("DEV_WORKER_PORT", 8787);
-const attemptWorkerPort = parsePortFromEnv("DEV_ATTEMPT_WORKER_PORT", 8788);
-const uiPort = parsePortFromEnv("DEV_UI_PORT", 4173);
-const workerInspectorPort = parsePortFromEnv("DEV_WORKER_INSPECTOR_PORT", 9229);
-const attemptInspectorPort = parsePortFromEnv(
-	"DEV_ATTEMPT_INSPECTOR_PORT",
-	9230,
-);
+const basePort = parsePortFromEnv("DEV_PORT", 8787);
+const {
+	workerPort,
+	attemptWorkerPort,
+	uiPort,
+	workerInspectorPort,
+	attemptInspectorPort,
+} = deriveDevPorts({ basePort });
+
+const devServicePortDefinitions = [
+	{ name: "worker", port: workerPort, skipFlag: null },
+	{
+		name: "attempt-worker",
+		port: attemptWorkerPort,
+		skipFlag: "--no-attempt-worker",
+	},
+	{ name: "ui", port: uiPort, skipFlag: "--no-ui" },
+];
+
+const normalizeMatchText = (value) =>
+	process.platform === "win32"
+		? String(value ?? "").toLowerCase()
+		: String(value ?? "");
+
+const managedCommandMarkers = [
+	process.cwd(),
+	scriptPath,
+	generatedWranglerRoot,
+	workerAppDir,
+	attemptWorkerAppDir,
+	path.join(process.cwd(), "apps", "ui"),
+	"api-worker-ui",
+].map((item) => normalizeMatchText(item));
+
+const collectServicePortsForArgs = (args, includeAll = false) =>
+	devServicePortDefinitions
+		.filter(
+			(definition) =>
+				includeAll ||
+				!definition.skipFlag ||
+				!(args ?? []).includes(definition.skipFlag),
+		)
+		.map((definition) => definition.port);
+
+const parsePortFromEndpoint = (endpoint) => {
+	const match = String(endpoint ?? "").match(/:(\d+)$/u);
+	if (!match) {
+		return null;
+	}
+	const port = Number(match[1]);
+	return Number.isInteger(port) ? port : null;
+};
+
+const summarizeCommandLine = (commandLine) => {
+	const text = String(commandLine ?? "").trim();
+	if (text.length <= 160) {
+		return text;
+	}
+	return `${text.slice(0, 157)}...`;
+};
+
+const getProcessCommandLine = (pid) => {
+	if (!Number.isInteger(pid)) {
+		return null;
+	}
+	if (process.platform === "win32") {
+		const psScript = `$ErrorActionPreference='SilentlyContinue'; $p = Get-CimInstance Win32_Process -Filter "ProcessId = ${pid}"; if ($null -ne $p) { $p.CommandLine }`;
+		const result = spawnSync(
+			"powershell.exe",
+			["-NoProfile", "-Command", psScript],
+			{ encoding: "utf8" },
+		);
+		if (result.status !== 0) {
+			return null;
+		}
+		const output = result.stdout.trim();
+		return output.length > 0 ? output : null;
+	}
+	const result = spawnSync("ps", ["-p", String(pid), "-o", "args="], {
+		encoding: "utf8",
+	});
+	if (result.status !== 0) {
+		return null;
+	}
+	const output = result.stdout.trim();
+	return output.length > 0 ? output : null;
+};
+
+const parseWindowsPortListeners = (ports) => {
+	const portSet = new Set(ports);
+	const result = spawnSync("netstat", ["-ano", "-p", "tcp"], {
+		encoding: "utf8",
+	});
+	if (result.status !== 0) {
+		return [];
+	}
+	const listeners = new Map();
+	for (const line of result.stdout.split(/\r?\n/u)) {
+		const trimmed = line.trim();
+		if (!trimmed.startsWith("TCP")) {
+			continue;
+		}
+		const columns = trimmed.split(/\s+/u);
+		if (columns.length < 5 || columns[3] !== "LISTENING") {
+			continue;
+		}
+		const port = parsePortFromEndpoint(columns[1]);
+		if (port === null || !portSet.has(port)) {
+			continue;
+		}
+		const pid = Number(columns[4]);
+		if (!Number.isInteger(pid)) {
+			continue;
+		}
+		listeners.set(`${port}:${pid}`, { port, pid });
+	}
+	return Array.from(listeners.values());
+};
+
+const parseUnixPortListenersFromLsof = (ports) => {
+	const portSet = new Set(ports);
+	const result = spawnSync("lsof", ["-nP", "-iTCP", "-sTCP:LISTEN"], {
+		encoding: "utf8",
+	});
+	if (result.error || result.status !== 0) {
+		return null;
+	}
+	const listeners = new Map();
+	for (const line of result.stdout.split(/\r?\n/u).slice(1)) {
+		const match = line.match(
+			/^\S+\s+(\d+)\s+\S+.*TCP\s+.+:(\d+)\s+\(LISTEN\)$/u,
+		);
+		if (!match) {
+			continue;
+		}
+		const pid = Number(match[1]);
+		const port = Number(match[2]);
+		if (!Number.isInteger(pid) || !portSet.has(port)) {
+			continue;
+		}
+		listeners.set(`${port}:${pid}`, { port, pid });
+	}
+	return Array.from(listeners.values());
+};
+
+const parseUnixPortListenersFromSs = (ports) => {
+	const portSet = new Set(ports);
+	const result = spawnSync("ss", ["-ltnp"], { encoding: "utf8" });
+	if (result.error || result.status !== 0) {
+		return [];
+	}
+	const listeners = new Map();
+	for (const line of result.stdout.split(/\r?\n/u)) {
+		const trimmed = line.trim();
+		if (!trimmed.startsWith("LISTEN")) {
+			continue;
+		}
+		const portMatch = trimmed.match(/:(\d+)\s+/u);
+		if (!portMatch) {
+			continue;
+		}
+		const port = Number(portMatch[1]);
+		if (!portSet.has(port)) {
+			continue;
+		}
+		const pidMatch = trimmed.match(/pid=(\d+)/u);
+		const pid = pidMatch ? Number(pidMatch[1]) : null;
+		listeners.set(`${port}:${pid ?? "unknown"}`, { port, pid });
+	}
+	return Array.from(listeners.values());
+};
+
+const readPortListeners = (ports) =>
+	process.platform === "win32"
+		? parseWindowsPortListeners(ports)
+		: (parseUnixPortListenersFromLsof(ports) ??
+			parseUnixPortListenersFromSs(ports));
+
+const isManagedDevPortProcess = ({ port, commandLine }) => {
+	const normalized = normalizeMatchText(commandLine);
+	if (!normalized) {
+		return false;
+	}
+	if (managedCommandMarkers.some((marker) => normalized.includes(marker))) {
+		return true;
+	}
+	if (port === uiPort) {
+		return normalized.includes("api-worker-ui") || normalized.includes("vite");
+	}
+	return normalized.includes("wrangler") && normalized.includes("dev");
+};
+
+const detectResidualDevPorts = ({ ports }) =>
+	readPortListeners(ports).map(({ port, pid }) => {
+		const commandLine =
+			typeof pid === "number" ? getProcessCommandLine(pid) : null;
+		return {
+			port,
+			pid: typeof pid === "number" ? pid : null,
+			commandLine,
+			managed: isManagedDevPortProcess({ port, commandLine }),
+		};
+	});
+
+const printResidualPortDetails = (residualPorts) => {
+	for (const residual of residualPorts) {
+		const scope =
+			residual.managed === false ? "非本项目进程占用" : "疑似本项目残留实例";
+		const pidText =
+			typeof residual.pid === "number" ? `PID ${residual.pid}` : "PID 未知";
+		const commandText = residual.commandLine
+			? `；命令: ${summarizeCommandLine(residual.commandLine)}`
+			: "";
+		console.log(
+			`⚠️ 端口 ${residual.port}: ${pidText}（${scope}${commandText}）`,
+		);
+	}
+};
+
+const assertPortsAvailableForArgs = (args) => {
+	const ports = collectServicePortsForArgs(args, false);
+	const occupied = detectResidualDevPorts({ ports });
+	if (occupied.length === 0) {
+		return;
+	}
+	const portSummary = occupied
+		.map((item) => `${item.port}${item.managed === false ? " (外部占用)" : ""}`)
+		.join(", ");
+	const recoveryHint = occupied.some((item) => item.managed !== false)
+		? "可先执行 bun run dev -- --stop 清理残留实例；"
+		: "";
+	throw new Error(
+		`开发端口已被占用：${portSummary}。${recoveryHint}若为外部进程，请手动释放端口后重试。`,
+	);
+};
+
+const stopManagedResidualPorts = async (residualPorts) => {
+	const stopPlan = buildStopPlan({
+		liveState: null,
+		residualPorts,
+	});
+	for (const pid of stopPlan.pids) {
+		await killTree(pid);
+	}
+	return stopPlan;
+};
 
 const children = new Map();
 const commandDefinitions = new Map();
@@ -962,27 +1203,43 @@ const buildHealthTargetsForArgs = (args) =>
 
 const printStatus = async () => {
 	const state = readLiveState();
-	if (!state) {
-		console.log("ℹ️ 后台 dev 未运行。");
+	const statusArgs = state?.args ?? [];
+	const residualPorts = detectResidualDevPorts({
+		ports: collectServicePortsForArgs(statusArgs, !state),
+	});
+	const healthTargets = state ? buildHealthTargetsForArgs(statusArgs) : [];
+	const healthChecks =
+		healthTargets.length > 0 ? await checkHealthTargets(healthTargets) : [];
+	const healthSummary =
+		healthChecks.length > 0 ? summarizeHealthChecks(healthChecks) : null;
+	const backgroundStatus = classifyBackgroundDevState({
+		pidRunning: Boolean(state),
+		healthSummary,
+		hasResidualPorts: residualPorts.length > 0,
+	});
+	const { summary } = formatBackgroundStatus({
+		state,
+		healthChecks,
+		residualPorts,
+		backgroundStatus,
+	});
+	console.log(summary);
+	if (!state && residualPorts.length === 0) {
 		console.log(`默认日志文件: ${logPath}`);
 		return;
 	}
-	const healthTargets = buildHealthTargetsForArgs(state.args ?? []);
-	const healthChecks = await checkHealthTargets(healthTargets);
-	const healthSummary = summarizeHealthChecks(healthChecks);
-	const backgroundStatus = classifyBackgroundDevState({
-		pidRunning: true,
-		healthSummary,
-	});
-	const prefix =
-		backgroundStatus.level === "success"
-			? "✅"
-			: backgroundStatus.level === "warn"
-				? "⚠️"
-				: "ℹ️";
-	console.log(
-		`${prefix} ${backgroundStatus.message}：${healthSummary.message}。`,
-	);
+	if (state && healthSummary) {
+		console.log(
+			`${backgroundStatus.level === "warn" ? "⚠️" : "✅"} ${backgroundStatus.message}：${healthSummary.message}。`,
+		);
+	}
+	if (!state) {
+		if (residualPorts.length > 0) {
+			printResidualPortDetails(residualPorts);
+			console.log(`默认日志文件: ${logPath}`);
+		}
+		return;
+	}
 	console.log(`PID: ${state.pid}`);
 	console.log(`启动时间: ${state.startedAt}`);
 	console.log(`参数: ${state.args.join(" ") || "(无)"}`);
@@ -1008,13 +1265,28 @@ const printStatus = async () => {
 
 const stopBackground = async () => {
 	const state = readLiveState();
-	if (!state) {
+	if (state) {
+		await killTree(state.pid);
+		removeState();
+		console.log(`✅ 已停止后台 dev（PID ${state.pid}）。`);
+		return;
+	}
+	const residualPorts = detectResidualDevPorts({
+		ports: collectServicePortsForArgs([], true),
+	});
+	const stopPlan = await stopManagedResidualPorts(residualPorts);
+	if (stopPlan.kind === "noop") {
 		console.log("ℹ️ 后台 dev 未运行，无需停止。");
 		return;
 	}
-	await killTree(state.pid);
-	removeState();
-	console.log(`✅ 已停止后台 dev（PID ${state.pid}）。`);
+	if (stopPlan.pids.length > 0) {
+		console.log(`✅ 已清理残留 dev 实例（PID: ${stopPlan.pids.join(", ")}）。`);
+	}
+	if (stopPlan.unmanagedPorts.length > 0) {
+		console.log(
+			`⚠️ 以下端口仍被非本项目进程占用，未自动清理：${stopPlan.unmanagedPorts.join(", ")}`,
+		);
+	}
 };
 
 const startBackground = () => {
@@ -1026,6 +1298,7 @@ const startBackground = () => {
 		printSync(`查看状态: bun run dev -- --status`);
 		return;
 	}
+	assertPortsAvailableForArgs(runtimeArgs);
 
 	ensureStateDir();
 	const cleanArgs = runtimeArgs.filter(
@@ -1124,6 +1397,7 @@ const main = async () => {
 	await prepareConfigs();
 	const workerConfigPath = ensureWorkerConfigForRun();
 	await applyLocalWorkerMigrations(workerConfigPath);
+	assertPortsAvailableForArgs(runtimeArgs);
 	const commands = buildCommands(workerConfigPath);
 	startLongRunningCommands(commands);
 	startHealthWatchdog(

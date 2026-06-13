@@ -1,3 +1,11 @@
+export const deriveDevPorts = ({ basePort }) => ({
+	workerPort: basePort,
+	attemptWorkerPort: basePort + 1,
+	uiPort: basePort + 2,
+	workerInspectorPort: basePort + 1000,
+	attemptInspectorPort: basePort + 1001,
+});
+
 export const buildDevHealthTargets = ({
 	workerPort,
 	attemptWorkerPort,
@@ -80,7 +88,18 @@ export const waitForChildExit = (child, timeoutMs) =>
 		child.once("exit", onExit);
 	});
 
-export const classifyBackgroundDevState = ({ pidRunning, healthSummary }) => {
+export const classifyBackgroundDevState = ({
+	pidRunning,
+	healthSummary,
+	hasResidualPorts = false,
+}) => {
+	if (!pidRunning && hasResidualPorts) {
+		return {
+			level: "warn",
+			state: "residual",
+			message: "后台 dev 守护进程未运行，但检测到残留实例",
+		};
+	}
 	if (!pidRunning) {
 		return {
 			level: "info",
@@ -99,6 +118,62 @@ export const classifyBackgroundDevState = ({ pidRunning, healthSummary }) => {
 		level: "success",
 		state: "healthy",
 		message: "后台 dev 正在运行",
+	};
+};
+
+export const formatBackgroundStatus = ({
+	state,
+	healthChecks,
+	residualPorts,
+	backgroundStatus,
+}) => {
+	if (backgroundStatus.state === "residual") {
+		const ports = residualPorts.map((item) => item.port).join(", ");
+		return {
+			summary: `⚠️ 后台 dev 守护进程未运行，但检测到残留端口：${ports}。`,
+		};
+	}
+	return {
+		summary: state
+			? `✅ 后台 dev 正在运行：${healthChecks.length} 个健康检查目标。`
+			: "ℹ️ 后台 dev 未运行。",
+	};
+};
+
+export const buildStopPlan = ({ liveState, residualPorts }) => {
+	if (liveState) {
+		return {
+			kind: "daemon",
+			pids: [liveState.pid],
+			unmanagedPorts: [],
+		};
+	}
+	const managedPids = Array.from(
+		new Set(
+			(residualPorts ?? [])
+				.filter((item) => item.managed !== false)
+				.map((item) => item.pid)
+				.filter((pid) => typeof pid === "number"),
+		),
+	);
+	const unmanagedPorts = Array.from(
+		new Set(
+			(residualPorts ?? [])
+				.filter((item) => item.managed === false)
+				.map((item) => item.port),
+		),
+	);
+	if (managedPids.length > 0 || unmanagedPorts.length > 0) {
+		return {
+			kind: "residual",
+			pids: managedPids,
+			unmanagedPorts,
+		};
+	}
+	return {
+		kind: "noop",
+		pids: [],
+		unmanagedPorts: [],
 	};
 };
 
