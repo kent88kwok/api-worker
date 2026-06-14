@@ -526,7 +526,12 @@ async function extractOpenAiResponseIdFromSse(
 	} catch {
 		return null;
 	} finally {
-		reader.releaseLock();
+		await reader.cancel().catch(() => undefined);
+		try {
+			reader.releaseLock();
+		} catch {
+			// ignore release errors from already-closed readers
+		}
 	}
 }
 

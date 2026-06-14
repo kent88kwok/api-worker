@@ -342,6 +342,11 @@ export async function detectAbnormalStreamSuccessResponse(
 		return null;
 	} finally {
 		clearTimeout(probeTimer);
-		reader.cancel().catch(() => undefined);
+		await reader.cancel().catch(() => undefined);
+		try {
+			reader.releaseLock();
+		} catch {
+			// ignore release errors from already-closed readers
+		}
 	}
 }

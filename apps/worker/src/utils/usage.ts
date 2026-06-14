@@ -318,141 +318,168 @@ export async function parseUsageFromSse(
 			sampleTruncated = true;
 		}
 	};
-
-	while (true) {
-		let chunk: ReadableStreamReadResult<Uint8Array>;
-		try {
-			chunk = await reader.read();
-		} catch (error) {
-			if (timedOut || isAbortLikeError(error)) {
+	try {
+		while (true) {
+			let chunk: ReadableStreamReadResult<Uint8Array>;
+			try {
+				chunk = await reader.read();
+			} catch (error) {
+				if (timedOut || isAbortLikeError(error)) {
+					break;
+				}
+				throw new StreamUsageParseError(
+					"usage_stream_reader_failed",
+					normalizeErrorDetail(error),
+					{
+						bytesRead,
+						eventsSeen,
+						sampledPayload: sampledPayload || null,
+						sampleTruncated,
+					},
+				);
+			}
+			const { done, value } = chunk;
+			if (done) {
 				break;
 			}
-			throw new StreamUsageParseError(
-				"usage_stream_reader_failed",
-				normalizeErrorDetail(error),
-				{
-					bytesRead,
-					eventsSeen,
-					sampledPayload: sampledPayload || null,
-					sampleTruncated,
-				},
-			);
-		}
-		const { done, value } = chunk;
-		if (done) {
-			break;
-		}
-		bytesRead += value?.byteLength ?? 0;
-		buffer += decoder.decode(value, { stream: true });
-		let newlineIndex = buffer.indexOf("\n");
-		while (newlineIndex !== -1) {
-			const rawLine = buffer.slice(0, newlineIndex);
-			buffer = buffer.slice(newlineIndex + 1);
-			const line = rawLine.trim();
-			if (!line) {
-				currentEventType = null;
-				newlineIndex = buffer.indexOf("\n");
-				continue;
-			}
-			if (line.startsWith("event:")) {
-				const nextEventType = line.slice(6).trim();
-				currentEventType = nextEventType || null;
-				newlineIndex = buffer.indexOf("\n");
-				continue;
-			}
-			if (line.startsWith("data:")) {
-				const payload = line.slice(5).trim();
-				if (payload && payload !== "[DONE]") {
-					eventsSeen += 1;
-					appendSample(payload);
-					if (firstTokenLatencyMs === null) {
-						firstTokenLatencyMs = Date.now() - start;
-					}
-					const parsedPayload = safeJsonParse<Record<string, unknown> | null>(
-						payload,
-						null,
-					);
-					if (
-						parsedPayload &&
-						typeof parsedPayload === "object" &&
-						!Array.isArray(parsedPayload)
-					) {
-						abnormal = extractStreamPayloadError(
-							parsedPayload,
-							currentEventType,
-							{
-								eventsSeen,
-								bytesRead,
-							},
+			bytesRead += value?.byteLength ?? 0;
+			buffer += decoder.decode(value, { stream: true });
+			let newlineIndex = buffer.indexOf("\n");
+			while (newlineIndex !== -1) {
+				const rawLine = buffer.slice(0, newlineIndex);
+				buffer = buffer.slice(newlineIndex + 1);
+				const line = rawLine.trim();
+				if (!line) {
+					currentEventType = null;
+					newlineIndex = buffer.indexOf("\n");
+					continue;
+				}
+				if (line.startsWith("event:")) {
+					const nextEventType = line.slice(6).trim();
+					currentEventType = nextEventType || null;
+					newlineIndex = buffer.indexOf("\n");
+					continue;
+				}
+				if (line.startsWith("data:")) {
+					const payload = line.slice(5).trim();
+					if (payload && payload !== "[DONE]") {
+						eventsSeen += 1;
+						appendSample(payload);
+						if (firstTokenLatencyMs === null) {
+							firstTokenLatencyMs = Date.now() - start;
+						}
+						const parsedPayload = safeJsonParse<Record<string, unknown> | null>(
+							payload,
+							null,
 						);
-						if (abnormal) {
-							if (timeoutId) {
-								clearTimeout(timeoutId);
+						if (
+							parsedPayload &&
+							typeof parsedPayload === "object" &&
+							!Array.isArray(parsedPayload)
+						) {
+							abnormal = extractStreamPayloadError(
+								parsedPayload,
+								currentEventType,
+								{
+									eventsSeen,
+									bytesRead,
+								},
+							);
+							if (abnormal) {
+								return {
+									usage,
+									firstTokenLatencyMs,
+									timedOut,
+									bytesRead,
+									eventsSeen,
+									sampledPayload: sampledPayload || null,
+									sampleTruncated,
+									abnormal,
+								};
 							}
-							return {
-								usage,
-								firstTokenLatencyMs,
-								timedOut,
-								bytesRead,
-								eventsSeen,
-								sampledPayload: sampledPayload || null,
-								sampleTruncated,
-								abnormal,
-							};
+						}
+						let wasmCandidate = null;
+						try {
+							wasmCandidate = parseUsageFromSseLineViaWasm(line);
+						} catch (error) {
+							throw new StreamUsageParseError(
+								"usage_sse_line_parse_failed",
+								normalizeErrorDetail(error),
+								{
+									bytesRead,
+									eventsSeen,
+									sampledPayload: sampledPayload || null,
+									sampleTruncated,
+								},
+							);
+						}
+						if (wasmCandidate) {
+							usage = enrichNormalizedUsage(wasmCandidate, parsedPayload);
+							newlineIndex = buffer.indexOf("\n");
+							continue;
 						}
 					}
-					let wasmCandidate = null;
-					try {
-						wasmCandidate = parseUsageFromSseLineViaWasm(line);
-					} catch (error) {
-						throw new StreamUsageParseError(
-							"usage_sse_line_parse_failed",
-							normalizeErrorDetail(error),
-							{
-								bytesRead,
-								eventsSeen,
-								sampledPayload: sampledPayload || null,
-								sampleTruncated,
-							},
-						);
-					}
-					if (wasmCandidate) {
-						usage = enrichNormalizedUsage(wasmCandidate, parsedPayload);
-						newlineIndex = buffer.indexOf("\n");
-						continue;
+				}
+				newlineIndex = buffer.indexOf("\n");
+			}
+		}
+
+		const remaining = buffer.trim();
+		if (remaining.startsWith("data:")) {
+			const payload = remaining.slice(5).trim();
+			if (payload && payload !== "[DONE]") {
+				eventsSeen += 1;
+				appendSample(payload);
+				if (firstTokenLatencyMs === null) {
+					firstTokenLatencyMs = Date.now() - start;
+				}
+				const parsedPayload = safeJsonParse<Record<string, unknown> | null>(
+					payload,
+					null,
+				);
+				if (
+					parsedPayload &&
+					typeof parsedPayload === "object" &&
+					!Array.isArray(parsedPayload)
+				) {
+					abnormal = extractStreamPayloadError(
+						parsedPayload,
+						currentEventType,
+						{
+							eventsSeen,
+							bytesRead,
+						},
+					);
+					if (abnormal) {
+						return {
+							usage,
+							firstTokenLatencyMs,
+							timedOut,
+							bytesRead,
+							eventsSeen,
+							sampledPayload: sampledPayload || null,
+							sampleTruncated,
+							abnormal,
+						};
 					}
 				}
-			}
-			newlineIndex = buffer.indexOf("\n");
-		}
-	}
-
-	const remaining = buffer.trim();
-	if (remaining.startsWith("data:")) {
-		const payload = remaining.slice(5).trim();
-		if (payload && payload !== "[DONE]") {
-			eventsSeen += 1;
-			appendSample(payload);
-			if (firstTokenLatencyMs === null) {
-				firstTokenLatencyMs = Date.now() - start;
-			}
-			const parsedPayload = safeJsonParse<Record<string, unknown> | null>(
-				payload,
-				null,
-			);
-			if (
-				parsedPayload &&
-				typeof parsedPayload === "object" &&
-				!Array.isArray(parsedPayload)
-			) {
-				abnormal = extractStreamPayloadError(parsedPayload, currentEventType, {
-					eventsSeen,
-					bytesRead,
-				});
-				if (abnormal) {
-					if (timeoutId) {
-						clearTimeout(timeoutId);
-					}
+				let wasmCandidate = null;
+				try {
+					wasmCandidate = parseUsageFromSseLineViaWasm(remaining);
+				} catch (error) {
+					throw new StreamUsageParseError(
+						"usage_sse_tail_parse_failed",
+						normalizeErrorDetail(error),
+						{
+							bytesRead,
+							eventsSeen,
+							sampledPayload: sampledPayload || null,
+							sampleTruncated,
+						},
+					);
+				}
+				if (wasmCandidate) {
+					usage = enrichNormalizedUsage(wasmCandidate, parsedPayload);
 					return {
 						usage,
 						firstTokenLatencyMs,
@@ -465,51 +492,27 @@ export async function parseUsageFromSse(
 					};
 				}
 			}
-			let wasmCandidate = null;
-			try {
-				wasmCandidate = parseUsageFromSseLineViaWasm(remaining);
-			} catch (error) {
-				throw new StreamUsageParseError(
-					"usage_sse_tail_parse_failed",
-					normalizeErrorDetail(error),
-					{
-						bytesRead,
-						eventsSeen,
-						sampledPayload: sampledPayload || null,
-						sampleTruncated,
-					},
-				);
-			}
-			if (wasmCandidate) {
-				usage = enrichNormalizedUsage(wasmCandidate, parsedPayload);
-				if (timeoutId) {
-					clearTimeout(timeoutId);
-				}
-				return {
-					usage,
-					firstTokenLatencyMs,
-					timedOut,
-					bytesRead,
-					eventsSeen,
-					sampledPayload: sampledPayload || null,
-					sampleTruncated,
-					abnormal,
-				};
-			}
+		}
+
+		return {
+			usage,
+			firstTokenLatencyMs,
+			timedOut,
+			bytesRead,
+			eventsSeen,
+			sampledPayload: sampledPayload || null,
+			sampleTruncated,
+			abnormal,
+		};
+	} finally {
+		if (timeoutId) {
+			clearTimeout(timeoutId);
+		}
+		await reader.cancel().catch(() => undefined);
+		try {
+			reader.releaseLock();
+		} catch {
+			// ignore release errors from already-closed readers
 		}
 	}
-
-	if (timeoutId) {
-		clearTimeout(timeoutId);
-	}
-	return {
-		usage,
-		firstTokenLatencyMs,
-		timedOut,
-		bytesRead,
-		eventsSeen,
-		sampledPayload: sampledPayload || null,
-		sampleTruncated,
-		abnormal,
-	};
 }
