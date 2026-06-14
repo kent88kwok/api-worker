@@ -250,10 +250,10 @@ function shouldInvalidateRunningReport(report: SiteTaskReportState): boolean {
 	if (report.status !== "running") {
 		return false;
 	}
-	return (
-		report.runtime_instance_id !== null &&
-		report.runtime_instance_id !== getSiteTaskRuntimeInstanceId()
-	);
+	if (report.runtime_instance_id === null) {
+		return true;
+	}
+	return report.runtime_instance_id !== getSiteTaskRuntimeInstanceId();
 }
 
 function buildInvalidatedRunningReport(

@@ -125,4 +125,25 @@ describe("site task report store", () => {
 		expect(reports["verify-active"]?.status).toBe("running");
 		expect(reports["verify-active"]?.progress.current_site_name).toBe("站点一");
 	});
+
+	it("会把缺少实例标识的旧运行中任务立即收口为失败", async () => {
+		vi.useFakeTimers();
+		vi.setSystemTime(new Date("2026-06-13T08:00:00.000Z"));
+		const { db, settings } = createSiteTaskReportDb();
+		settings.set(
+			"site_task_report_verify_active",
+			JSON.stringify({
+				...buildRunningVerificationReport("2026-06-13T07:59:50.000Z"),
+				runtime_instance_id: null,
+			}),
+		);
+
+		const reports = await listSiteTaskReports(db as never);
+
+		expect(reports["verify-active"]?.status).toBe("failed");
+		expect(reports["verify-active"]?.error_message).toContain("重启");
+		expect(settings.get("site_task_report_verify_active")).toContain(
+			'"status":"failed"',
+		);
+	});
 });
