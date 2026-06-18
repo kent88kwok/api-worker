@@ -25,6 +25,11 @@ export interface DevHealthCheck extends DevHealthTarget {
 	error?: string;
 }
 
+export function loadDotEnvFile(
+	sourceText: string,
+	env: Record<string, string | undefined>,
+): boolean;
+
 export function buildDevHealthTargets(input: {
 	workerPort: number;
 	attemptWorkerPort: number;

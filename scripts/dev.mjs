@@ -21,6 +21,7 @@ import {
 	classifyBackgroundDevState,
 	deriveDevPorts,
 	formatBackgroundStatus,
+	loadDotEnvFile,
 	resolveChildExitSupervisorAction,
 	shouldRestartUnhealthyService,
 	summarizeHealthChecks,
@@ -146,6 +147,15 @@ const parsePortFromEnv = (name, fallback) => {
 	}
 	return value;
 };
+
+try {
+	const envPath = path.join(process.cwd(), ".env");
+	if (existsSync(envPath)) {
+		loadDotEnvFile(readFileSync(envPath, "utf8"), process.env);
+	}
+} catch {
+	// Missing or unreadable local env files should not block default dev startup.
+}
 
 const basePort = parsePortFromEnv("DEV_PORT", 8787);
 const {

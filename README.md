@@ -205,6 +205,8 @@ bun --filter api-worker-ui dev -- --port 4173
 
 - `DEV_PORT`：本地开发主端口（默认 `8787`）
 
+`bun run dev` 会自动读取仓库根目录 `.env`；如果同名变量已在当前终端或系统环境中设置，则外部环境变量优先生效。
+
 如果你之前配置过 `DEV_WORKER_PORT`、`DEV_ATTEMPT_WORKER_PORT`、`DEV_UI_PORT`，请迁移到单一 `DEV_PORT`。脚本现在会基于 `DEV_PORT` 自动推导其余端口。
 
 ### 4) 首次本地迁移（推荐）

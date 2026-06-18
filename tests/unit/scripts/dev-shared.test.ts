@@ -5,6 +5,7 @@ import {
 	classifyBackgroundDevState,
 	deriveDevPorts,
 	formatBackgroundStatus,
+	loadDotEnvFile,
 	resolveChildExitSupervisorAction,
 	shouldRestartUnhealthyService,
 	summarizeHealthChecks,
@@ -12,6 +13,26 @@ import {
 } from "../../../scripts/dev-shared.mjs";
 
 describe("dev health helpers", () => {
+	it("loads DEV_PORT from a project .env file without overriding existing env", () => {
+		const env = { DEV_PORT: "8989" };
+		const loaded = loadDotEnvFile(
+			[
+				"# local dev settings",
+				"DEV_PORT=9999",
+				"DEV_HEALTH_CHECK_INTERVAL_MS='5000'",
+				'DEV_HEALTH_CHECK_TIMEOUT_MS="1000"',
+			].join("\n"),
+			env,
+		);
+
+		expect(loaded).toBe(true);
+		expect(env).toEqual({
+			DEV_PORT: "8989",
+			DEV_HEALTH_CHECK_INTERVAL_MS: "5000",
+			DEV_HEALTH_CHECK_TIMEOUT_MS: "1000",
+		});
+	});
+
 	it("builds only the worker health target when attempt worker is skipped", () => {
 		const targets = buildDevHealthTargets({
 			workerPort: 8787,

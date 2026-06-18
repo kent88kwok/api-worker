@@ -1,3 +1,34 @@
+export const loadDotEnvFile = (sourceText, env) => {
+	if (typeof sourceText !== "string") {
+		return false;
+	}
+	for (const rawLine of sourceText.split(/\r?\n/u)) {
+		const line = rawLine.trim();
+		if (line.length === 0 || line.startsWith("#")) {
+			continue;
+		}
+		const separatorIndex = line.indexOf("=");
+		if (separatorIndex <= 0) {
+			continue;
+		}
+		const key = line.slice(0, separatorIndex).trim();
+		if (!/^[A-Za-z_][A-Za-z0-9_]*$/u.test(key) || env[key] !== undefined) {
+			continue;
+		}
+		let value = line.slice(separatorIndex + 1).trim();
+		const quote = value[0];
+		if (
+			value.length >= 2 &&
+			(quote === '"' || quote === "'") &&
+			value[value.length - 1] === quote
+		) {
+			value = value.slice(1, -1);
+		}
+		env[key] = value;
+	}
+	return true;
+};
+
 export const deriveDevPorts = ({ basePort }) => ({
 	workerPort: basePort,
 	attemptWorkerPort: basePort + 1,
