@@ -8,9 +8,16 @@
 - 文档与代码保持一致；行为变化必须同步文档。
 - 所有回答和提交说明使用中文（保留代码与 API 原文）。
 
-## 2. 本地环境变量
+## 2. 文件与目录规范
 
-Agent 本地运行前，若不存在 `.env.agent`，先参考 `.env.agent.example` 创建本地 `.env.agent`（模板仅作参考）。
+- 目录优先表达领域边界，避免在同一层堆叠大量前缀文件模拟目录。
+- 文件名使用 kebab-case；React 组件文件可使用 PascalCase。
+- 小于 30 行且只被同领域使用的小文件应优先合并，除非它是类型定义、框架约定入口或公共出口。
+- 超过 400 行的源文件应优先拆分纯逻辑、子组件、请求构造、响应转换、持久化访问和类型定义。
+- Worker 业务逻辑统一放在 `apps/worker/src/domains/<domain>/`，`routes` 只保留 HTTP 入参、鉴权上下文和响应适配。
+- UI 按 `apps/ui/src/app/`、`apps/ui/src/features/<feature>/`、`apps/ui/src/core/`、`apps/ui/src/components/` 分层；只被单一 feature 使用的工具函数留在该 feature 目录。
+- 测试目录跟随源码领域：worker 测试放在 `tests/unit/worker/<domain>/`，UI 测试放在 `tests/unit/ui/<feature>/`，e2e 测试放在 `tests/e2e/`。
+- 生成物必须有明确边界；不可跟踪的构建产物应写入 `.gitignore`，必须跟踪的生成目录需配套 README 说明来源和原因。
 
 ## 3. 完成后必须执行
 
