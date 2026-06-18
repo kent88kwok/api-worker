@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { removeModelFromModelsJson } from "../../../apps/worker/src/services/channel-models";
+import { removeModelFromModelsJson } from "../../../../apps/worker/src/domains/channel/models";
 import {
 	parseManualModelConfig,
 	resolveChannelModelStatus,
 	resolveEffectiveModelIds,
 	stageNewlyDiscoveredModels,
 	updateManualModelStatus,
-} from "../../../apps/worker/src/services/channel-effective-models";
+} from "../../../../apps/worker/src/domains/channel/effective-models";
 
 describe("channel effective models", () => {
 	it("合并自动模型和手动补充模型，并排除人工禁用模型", () => {

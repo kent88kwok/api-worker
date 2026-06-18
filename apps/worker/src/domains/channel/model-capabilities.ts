@@ -1,11 +1,11 @@
 import type { D1Database } from "@cloudflare/workers-types";
-import { nowIso } from "../utils/time";
-import type { ModelEntry } from "./channel-models";
-import { extractModelIds } from "./channel-models";
+import { nowIso } from "../../utils/time";
+import type { ModelEntry } from "./models";
+import { extractModelIds } from "./models";
 import {
 	deriveCanonicalModel,
 	toCanonicalModelSet,
-} from "./model-normalization";
+} from "../../services/model-normalization";
 
 export type CapabilityRow = {
 	channel_id: string;

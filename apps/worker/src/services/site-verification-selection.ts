@@ -1,11 +1,11 @@
-import { selectTokenForModel } from "./channel-attemptability";
+import { selectTokenForModel } from "../domains/channel/attemptability";
 import {
 	parseManualModelConfig,
 	resolveEffectiveModelIds,
-} from "./channel-effective-models";
-import type { ChannelRow } from "./channel-types";
-import { extractModelIds } from "./channel-models";
-import type { ChannelTokenTestItem } from "./channel-testing";
+} from "../domains/channel/effective-models";
+import type { ChannelRow } from "../domains/channel/types";
+import { extractModelIds } from "../domains/channel/models";
+import type { ChannelTokenTestItem } from "../domains/channel/testing";
 import { deriveCanonicalModel } from "./model-normalization";
 import { safeJsonParse } from "../utils/json";
 

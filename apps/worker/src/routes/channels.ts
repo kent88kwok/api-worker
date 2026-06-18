@@ -7,7 +7,7 @@ import {
 	insertChannel,
 	listChannels,
 	updateChannel,
-} from "../services/channel-repo";
+} from "../domains/channel/repo";
 import { triggerBackupAfterDataChange } from "../services/backup-auto-sync";
 import { verifyChannelById } from "../services/site-task-dispatcher";
 import { invalidateSelectionHotCache } from "../services/hot-kv";

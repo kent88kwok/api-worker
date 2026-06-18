@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
 	buildChannelAttemptPlan,
 	selectCandidateChannels,
-} from "../../../apps/worker/src/services/channel-routing";
-import type { ChannelRecord } from "../../../apps/worker/src/services/channel-types";
+} from "../../../../apps/worker/src/domains/channel/routing";
+import type { ChannelRecord } from "../../../../apps/worker/src/domains/channel/types";
 
 function buildChannel(
 	overrides: Partial<ChannelRecord> = {},

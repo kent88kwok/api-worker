@@ -3,10 +3,10 @@ import {
 	parseManualModelConfig,
 	resolveChannelModelStatus,
 	type ManualModelStatus,
-} from "./channel-effective-models";
-import { listVerifiedModelsByChannel } from "./channel-model-capabilities";
-import { extractModels, extractModelIds } from "./channel-models";
-import { listChannels } from "./channel-repo";
+} from "../domains/channel/effective-models";
+import { listVerifiedModelsByChannel } from "../domains/channel/model-capabilities";
+import { extractModels, extractModelIds } from "../domains/channel/models";
+import { listChannels } from "../domains/channel/repo";
 import { deriveCanonicalModel } from "./model-normalization";
 
 export type ModelChannelStatus = "auto" | "manual" | "excluded";

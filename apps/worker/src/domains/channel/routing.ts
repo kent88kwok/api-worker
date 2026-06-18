@@ -2,20 +2,23 @@ import {
 	type ChannelMetadata,
 	parseChannelMetadata,
 	resolveMappedModel,
-} from "./channel-metadata";
-import { extractModelIds } from "./channel-models";
-import { deriveCanonicalModel } from "./model-normalization";
+} from "./metadata";
+import { extractModelIds } from "./models";
+import { deriveCanonicalModel } from "../../services/model-normalization";
 import {
 	buildRequestEntryFormatAttemptOrder,
 	resolveEndpointTypeForRequestEntryFormat,
-} from "./request-entry-attempts";
-import type { EndpointType, ProviderType } from "./provider-transform";
-import type { RequestEntryFormat } from "./site-metadata";
+} from "../../services/request-entry-attempts";
+import type {
+	EndpointType,
+	ProviderType,
+} from "../../services/provider-transform";
+import type { RequestEntryFormat } from "../../services/site-metadata";
 import {
 	parseManualModelConfig,
 	resolveEffectiveModelIds,
-} from "./channel-effective-models";
-import type { ChannelRecord } from "./channel-types";
+} from "./effective-models";
+import type { ChannelRecord } from "./types";
 
 export type ChannelAttemptPlanItem = {
 	channel: ChannelRecord;

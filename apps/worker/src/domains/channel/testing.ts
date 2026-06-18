@@ -1,11 +1,11 @@
 import type { D1Database } from "@cloudflare/workers-types";
-import type { ProviderType } from "./channel-metadata";
-import { nowIso } from "../utils/time";
-import { upsertChannelModelCapabilities } from "./channel-model-capabilities";
-import { modelsToJson } from "./channel-models";
-import type { ModelDiscoveryResult } from "./providers";
-import type { SiteType } from "./site-metadata";
-import { discoverUpstreamModels } from "./upstreams";
+import type { ProviderType } from "./metadata";
+import { nowIso } from "../../utils/time";
+import { upsertChannelModelCapabilities } from "./model-capabilities";
+import { modelsToJson } from "./models";
+import type { ModelDiscoveryResult } from "../../services/providers";
+import type { SiteType } from "../../services/site-metadata";
+import { discoverUpstreamModels } from "../../services/upstreams";
 
 export type ChannelTestResult = ModelDiscoveryResult;
 

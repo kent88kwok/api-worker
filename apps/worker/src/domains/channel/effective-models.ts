@@ -1,9 +1,9 @@
 import type { D1Database } from "@cloudflare/workers-types";
-import { safeJsonParse } from "../utils/json";
-import type { ChannelRow } from "./channel-types";
-import { extractModelIds, type ModelEntry } from "./channel-models";
-import { listVerifiedModelsByChannel } from "./channel-model-capabilities";
-import { deriveCanonicalModel } from "./model-normalization";
+import { safeJsonParse } from "../../utils/json";
+import type { ChannelRow } from "./types";
+import { extractModelIds, type ModelEntry } from "./models";
+import { listVerifiedModelsByChannel } from "./model-capabilities";
+import { deriveCanonicalModel } from "../../services/model-normalization";
 
 type ManualModelConfig = {
 	include: string[];

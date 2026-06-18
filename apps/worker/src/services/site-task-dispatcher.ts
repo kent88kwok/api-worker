@@ -11,13 +11,13 @@ import {
 	listChannels,
 	getChannelById,
 	updateChannelCheckinResult,
-} from "./channel-repo";
+} from "../domains/channel/repo";
 import { getProxyRuntimeSettings } from "./settings";
 import {
 	listCallTokens,
 	updateCallTokenModels,
-} from "./channel-call-token-repo";
-import { runDisabledChannelRecoveryProbe } from "./channel-recovery-task";
+} from "../domains/channel/call-token-repo";
+import { runDisabledChannelRecoveryProbe } from "../domains/channel/recovery-task";
 import {
 	buildVerificationBatchResult,
 	persistSiteVerificationResult,
@@ -36,11 +36,14 @@ import {
 	summarizeChannelTokenFailures,
 	testChannelTokens,
 	type ChannelTokenTestItem,
-} from "./channel-testing";
-import { extractModelIds, modelsToJson } from "./channel-models";
-import { stageNewlyDiscoveredModels } from "./channel-effective-models";
-import { parseChannelMetadata, resolveProvider } from "./channel-metadata";
-import { upsertChannelModelCapabilities } from "./channel-model-capabilities";
+} from "../domains/channel/testing";
+import { extractModelIds, modelsToJson } from "../domains/channel/models";
+import { stageNewlyDiscoveredModels } from "../domains/channel/effective-models";
+import {
+	parseChannelMetadata,
+	resolveProvider,
+} from "../domains/channel/metadata";
+import { upsertChannelModelCapabilities } from "../domains/channel/model-capabilities";
 import type { SiteType } from "./site-metadata";
 
 type SiteTaskRuntime = {

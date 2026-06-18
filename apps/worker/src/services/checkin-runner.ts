@@ -4,7 +4,7 @@ import {
 	getChannelById,
 	listChannels,
 	updateChannelCheckinResult,
-} from "./channel-repo";
+} from "../domains/channel/repo";
 import {
 	type CheckinResultItem,
 	type CheckinSummary,

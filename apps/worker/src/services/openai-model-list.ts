@@ -1,6 +1,6 @@
 import type { D1Database } from "@cloudflare/workers-types";
-import { listEffectiveModelEntries } from "./channel-effective-models";
-import type { ChannelRow } from "./channel-types";
+import { listEffectiveModelEntries } from "../domains/channel/effective-models";
+import type { ChannelRow } from "../domains/channel/types";
 
 export type OpenAiModelListItem = {
 	id: string;

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-vi.mock("../../../apps/worker/src/services/channels", () => ({
+vi.mock("../../../apps/worker/src/domains/channel/weighted-order", () => ({
 	createWeightedOrder: <T>(channels: T[]) => channels,
 }));
 import {

@@ -2,8 +2,8 @@ import { normalizeSiteType } from "../../../shared-core/src";
 import { type Context, Hono } from "hono";
 import type { AppEnv } from "../env";
 import { newApiAuth } from "../middleware/newApiAuth";
-import { extractModelIds } from "../services/channel-models";
-import { listEffectiveModelsByChannel } from "../services/channel-effective-models";
+import { extractModelIds } from "../domains/channel/models";
+import { listEffectiveModelsByChannel } from "../domains/channel/effective-models";
 import {
 	channelExists,
 	countChannels,
@@ -14,12 +14,12 @@ import {
 	listActiveChannels,
 	listChannels,
 	updateChannel,
-} from "../services/channel-repo";
+} from "../domains/channel/repo";
 import {
 	fetchChannelModels,
 	updateChannelTestResult,
-} from "../services/channel-testing";
-import { parseChannelMetadata } from "../services/channel-metadata";
+} from "../domains/channel/testing";
+import { parseChannelMetadata } from "../domains/channel/metadata";
 import {
 	parseProviderType,
 	resolveUpstreamProvider,

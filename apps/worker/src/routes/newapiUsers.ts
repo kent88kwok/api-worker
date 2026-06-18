@@ -1,8 +1,8 @@
 import { Hono } from "hono";
 import type { AppEnv } from "../env";
 import { newApiAuth } from "../middleware/newApiAuth";
-import { listEffectiveModelsByChannel } from "../services/channel-effective-models";
-import { listActiveChannels } from "../services/channel-repo";
+import { listEffectiveModelsByChannel } from "../domains/channel/effective-models";
+import { listActiveChannels } from "../domains/channel/repo";
 import { newApiSuccess } from "../utils/newapi-response";
 
 const users = new Hono<AppEnv>({ strict: false });

@@ -2,11 +2,14 @@ import type { D1Database } from "@cloudflare/workers-types";
 import { safeJsonParse } from "../utils/json";
 import { nowIso } from "../utils/time";
 import { normalizeBaseUrl } from "../utils/url";
-import { selectTokenForModel } from "./channel-attemptability";
-import { updateCallTokenModels } from "./channel-call-token-repo";
-import { stageNewlyDiscoveredModels } from "./channel-effective-models";
-import { extractModelIds, modelsToJson } from "./channel-models";
-import { parseChannelMetadata, resolveProvider } from "./channel-metadata";
+import { selectTokenForModel } from "../domains/channel/attemptability";
+import { updateCallTokenModels } from "../domains/channel/call-token-repo";
+import { stageNewlyDiscoveredModels } from "../domains/channel/effective-models";
+import { extractModelIds, modelsToJson } from "../domains/channel/models";
+import {
+	parseChannelMetadata,
+	resolveProvider,
+} from "../domains/channel/metadata";
 import { collectVerifiedTokenModelUpdates } from "./site-verification-token-models";
 import { inspectSuccessfulResponse } from "./successful-response";
 import {
@@ -14,8 +17,8 @@ import {
 	summarizeChannelTokenFailures,
 	updateChannelTestResult,
 	testChannelTokens,
-} from "./channel-testing";
-import type { ChannelRow } from "./channel-types";
+} from "../domains/channel/testing";
+import type { ChannelRow } from "../domains/channel/types";
 import {
 	buildVerificationModelAttemptOrder,
 	collectCandidateModels,

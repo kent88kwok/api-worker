@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
 	resolveChannelAttemptTarget,
 	selectTokenForModel,
-} from "../../../apps/worker/src/services/channel-attemptability";
+} from "../../../../apps/worker/src/domains/channel/attemptability";
 
 describe("channel attemptability", () => {
 	it("存在未同步模型列表的 token 时，仍应允许命中该 token", () => {

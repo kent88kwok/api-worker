@@ -4,8 +4,8 @@ import {
 	type EndpointType,
 	type ProviderType,
 } from "../provider-transform";
-import type { CallTokenSelection } from "../channel-attemptability";
-import type { ChannelRecord } from "../channels";
+import type { CallTokenSelection } from "../../domains/channel/attemptability";
+import type { ChannelRecord } from "../../domains/channel/types";
 import type { RequestEntryFormat } from "../site-metadata";
 import type { NormalizedUsage, StreamUsage } from "../../utils/usage";
 import {

@@ -4,9 +4,9 @@ import {
 	extractModelIds,
 	modelsToJson,
 	normalizeModelsInput,
-} from "./channel-models";
-import { toInternalStatus, toNewApiStatus } from "./channel-status";
-import type { ChannelRow } from "./channel-types";
+} from "../domains/channel/models";
+import { toInternalStatus, toNewApiStatus } from "../domains/channel/status";
+import type { ChannelRow } from "../domains/channel/types";
 
 export { extractModelIds, modelsToJson, normalizeModelsInput };
 export { toInternalStatus, toNewApiStatus };

@@ -24,19 +24,19 @@ import type { CallTokenItem } from "../../../worker/src/services/call-token-sele
 import {
 	resolveChannelAttemptTarget,
 	type CallTokenSelection,
-} from "../../../worker/src/services/channel-attemptability";
-import { listCallTokens } from "../../../worker/src/services/channel-call-token-repo";
+} from "../../../worker/src/domains/channel/attemptability";
+import { listCallTokens } from "../../../worker/src/domains/channel/call-token-repo";
 import {
 	listCoolingDownChannelsForModel,
 	listVerifiedModelsByChannel,
 	recordChannelDisableHit,
-} from "../../../worker/src/services/channel-model-capabilities";
-import { listActiveChannels } from "../../../worker/src/services/channel-repo";
-import { type ChannelRecord } from "../../../worker/src/services/channels";
+} from "../../../worker/src/domains/channel/model-capabilities";
+import { listActiveChannels } from "../../../worker/src/domains/channel/repo";
+import type { ChannelRecord } from "../../../worker/src/domains/channel/types";
 import {
 	buildChannelAttemptPlan,
 	selectCandidateChannels,
-} from "../../../worker/src/services/channel-routing";
+} from "../../../worker/src/domains/channel/routing";
 import { adaptChatResponse } from "../../../worker/src/services/chat-response-adapter";
 import {
 	buildActiveChannelsKey,

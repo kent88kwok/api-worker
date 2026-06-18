@@ -1,5 +1,6 @@
 import { normalizeProxyStreamUsageMode } from "../../../../shared-core/src";
-import { type ChannelRecord, createWeightedOrder } from "../channels";
+import type { ChannelRecord } from "../../domains/channel/types";
+import { createWeightedOrder } from "../../domains/channel/weighted-order";
 import type { EndpointType } from "../provider-transform";
 import type { StreamUsageMode, StreamUsageOptions } from "../../utils/usage";
 

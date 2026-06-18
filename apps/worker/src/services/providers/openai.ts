@@ -1,4 +1,4 @@
-import { normalizeModelsInput } from "../channel-models";
+import { normalizeModelsInput } from "../../domains/channel/models";
 import {
 	applyHeaderOverrides,
 	buildBaseHeaders,

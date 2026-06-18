@@ -1,7 +1,7 @@
 import type { TokenRecord } from "../../middleware/tokenAuth";
 import type { CallTokenItem } from "../call-token-selector";
-import { resolveChannelAttemptTarget } from "../channel-attemptability";
-import type { ChannelRecord } from "../channels";
+import { resolveChannelAttemptTarget } from "../../domains/channel/attemptability";
+import type { ChannelRecord } from "../../domains/channel/types";
 import type { EndpointType, ProviderType } from "../provider-transform";
 import { getProviderAdapter } from "../providers";
 import { safeJsonParse } from "../../utils/json";

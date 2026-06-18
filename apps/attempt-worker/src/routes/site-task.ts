@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { runCheckin } from "../../../worker/src/services/checkin";
-import { runDisabledChannelRecoveryProbe } from "../../../worker/src/services/channel-recovery-task";
-import { testChannelTokens } from "../../../worker/src/services/channel-testing";
+import { runDisabledChannelRecoveryProbe } from "../../../worker/src/domains/channel/recovery-task";
+import { testChannelTokens } from "../../../worker/src/domains/channel/testing";
 import type {
 	SiteTaskCheckinRequest,
 	SiteTaskProbeRequest,

@@ -3,12 +3,12 @@ import {
 	resolveProvider,
 	type ChannelMetadata,
 	type ProviderType,
-} from "./channel-metadata";
-import { deriveCanonicalModel } from "./model-normalization";
-import { resolveUpstreamModelForChannel } from "./channel-routing";
-import type { ChannelRecord } from "./channel-types";
-import type { CallTokenItem } from "./call-token-selector";
-import type { EndpointType } from "./provider-transform";
+} from "./metadata";
+import { deriveCanonicalModel } from "../../services/model-normalization";
+import { resolveUpstreamModelForChannel } from "./routing";
+import type { ChannelRecord } from "./types";
+import type { CallTokenItem } from "../../services/call-token-selector";
+import type { EndpointType } from "../../services/provider-transform";
 
 export type ModelScopedToken = {
 	id?: string;

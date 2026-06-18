@@ -1,5 +1,5 @@
 import type { D1Database } from "@cloudflare/workers-types";
-import type { ChannelCallTokenRow } from "./channel-call-token-types";
+import type { ChannelCallTokenRow } from "./call-token-types";
 
 type ChannelCallTokenFilters = {
 	channelIds?: string[] | null;

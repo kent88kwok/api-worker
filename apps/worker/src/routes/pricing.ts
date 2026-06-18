@@ -1,8 +1,8 @@
 import { Hono } from "hono";
 import type { AppEnv } from "../env";
 import { triggerBackupAfterDataChange } from "../services/backup-auto-sync";
-import { extractModels } from "../services/channel-models";
-import { listChannels } from "../services/channel-repo";
+import { extractModels } from "../domains/channel/models";
+import { listChannels } from "../domains/channel/repo";
 import { fetchUsdCnyRate } from "../services/pricing/exchange-rate";
 import { planOrphanManualPrices } from "../services/pricing/maintenance";
 import {

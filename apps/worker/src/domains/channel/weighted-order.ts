@@ -1,10 +1,5 @@
-import { createWeightedOrderIndicesViaWasm } from "../wasm/core";
-import { extractModels } from "./channel-models";
-import type { ChannelRecord } from "./channel-types";
-
-export type { ModelEntry } from "./channel-models";
-export type { ChannelRecord } from "./channel-types";
-export { extractModels };
+import { createWeightedOrderIndicesViaWasm } from "../../wasm/core";
+import type { ChannelRecord } from "./types";
 
 /**
  * Returns channels in a weighted random order.

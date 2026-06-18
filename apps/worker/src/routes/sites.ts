@@ -11,18 +11,18 @@ import type { AppEnv } from "../env";
 import {
 	listCallTokens,
 	replaceCallTokensForChannel,
-} from "../services/channel-call-token-repo";
+} from "../domains/channel/call-token-repo";
 import {
 	clearChannelModelCooldown,
 	listCoolingDownModelEntriesByChannel,
-} from "../services/channel-model-capabilities";
+} from "../domains/channel/model-capabilities";
 import {
 	deleteChannel,
 	getChannelById,
 	insertChannel,
 	listChannels,
 	updateChannel,
-} from "../services/channel-repo";
+} from "../domains/channel/repo";
 import { invalidateSelectionHotCache } from "../services/hot-kv";
 import {
 	buildSiteMetadata,

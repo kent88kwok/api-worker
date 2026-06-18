@@ -1,6 +1,6 @@
-import { safeJsonParse } from "../utils/json";
-import { deriveCanonicalModel } from "./model-normalization";
-import type { ChannelRow } from "./channel-types";
+import { safeJsonParse } from "../../utils/json";
+import { deriveCanonicalModel } from "../../services/model-normalization";
+import type { ChannelRow } from "./types";
 
 export type ModelEntry = {
 	id: string;

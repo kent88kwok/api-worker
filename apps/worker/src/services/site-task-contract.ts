@@ -1,9 +1,9 @@
 import type {
 	ChannelTokenTestItem,
 	ChannelTokenTestSummary,
-} from "./channel-testing";
+} from "../domains/channel/testing";
 import type { CheckinResultItem } from "./checkin";
-import type { ProviderType } from "./channel-metadata";
+import type { ProviderType } from "../domains/channel/metadata";
 import type { SiteType } from "./site-metadata";
 
 export type SiteTaskToken = {

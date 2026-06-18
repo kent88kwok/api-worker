@@ -3,8 +3,8 @@ import type { AppEnv } from "../env";
 import {
 	updateManualModelStatus,
 	type ManualModelStatus,
-} from "../services/channel-effective-models";
-import { getChannelById, updateChannel } from "../services/channel-repo";
+} from "../domains/channel/effective-models";
+import { getChannelById, updateChannel } from "../domains/channel/repo";
 import {
 	buildModelsIndexKey,
 	invalidateSelectionHotCache,

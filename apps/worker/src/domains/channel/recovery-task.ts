@@ -1,18 +1,15 @@
-import {
-	testChannelTokens,
-	type ChannelTokenTestSummary,
-} from "./channel-testing";
-import { resolveUpstreamProvider } from "./upstreams";
-import { normalizeChatRequest } from "./provider-transform";
+import { testChannelTokens, type ChannelTokenTestSummary } from "./testing";
+import { resolveUpstreamProvider } from "../../services/upstreams";
+import { normalizeChatRequest } from "../../services/provider-transform";
 import type {
 	SiteTaskProbeChannel,
 	SiteTaskProbeResult,
 	SiteTaskToken,
-} from "./site-task-contract";
-import { normalizeBaseUrl } from "../utils/url";
-import { getProviderAdapter } from "./providers";
-import { buildProviderChatRequest } from "./providers/chat-request";
-import { inspectSuccessfulResponse } from "./successful-response";
+} from "../../services/site-task-contract";
+import { normalizeBaseUrl } from "../../utils/url";
+import { getProviderAdapter } from "../../services/providers";
+import { buildProviderChatRequest } from "../../services/providers/chat-request";
+import { inspectSuccessfulResponse } from "../../services/successful-response";
 
 const RECOVERY_PROBE_PROMPT = "Reply with a short health-check message.";
 const RECOVERY_PROBE_MAX_TOKENS = 32;

@@ -3,7 +3,7 @@ import { type AttemptLogInput, insertAttemptEvent } from "./attempt-events";
 import {
 	recordChannelModelError,
 	upsertChannelModelCapabilities,
-} from "./channel-model-capabilities";
+} from "../domains/channel/model-capabilities";
 import { resolveCanonicalModel } from "./model-normalization";
 import type { UsageInput } from "./usage";
 import { recordUsage } from "./usage";

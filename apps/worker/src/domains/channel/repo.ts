@@ -1,5 +1,5 @@
 import type { D1Database } from "@cloudflare/workers-types";
-import type { ChannelRow } from "./channel-types";
+import type { ChannelRow } from "./types";
 
 type ChannelFilters = {
 	status?: string | null;

@@ -3,11 +3,11 @@ import {
 	insertChannel,
 	type ChannelInsertInput,
 	updateChannel,
-} from "./channel-repo";
+} from "../domains/channel/repo";
 import {
 	listCallTokens,
 	replaceCallTokensForChannel,
-} from "./channel-call-token-repo";
+} from "../domains/channel/call-token-repo";
 import {
 	BACKUP_LOCAL_ONLY_SETTING_KEYS,
 	isBackupLocalOnlySettingKey,

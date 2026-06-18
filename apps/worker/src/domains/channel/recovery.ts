@@ -1,15 +1,15 @@
 import type { D1Database } from "@cloudflare/workers-types";
-import { nowIso } from "../utils/time";
-import { normalizeBaseUrl } from "../utils/url";
-import { listCallTokens } from "./channel-call-token-repo";
-import { modelsToJson } from "./channel-models";
-import { parseChannelMetadata, resolveProvider } from "./channel-metadata";
-import { listChannels } from "./channel-repo";
-import { fetchChannelModels, updateChannelTestResult } from "./channel-testing";
-import { normalizeChatRequest } from "./provider-transform";
-import { getProviderAdapter } from "./providers";
-import { buildProviderChatRequest } from "./providers/chat-request";
-import { inspectSuccessfulResponse } from "./successful-response";
+import { nowIso } from "../../utils/time";
+import { normalizeBaseUrl } from "../../utils/url";
+import { listCallTokens } from "./call-token-repo";
+import { modelsToJson } from "./models";
+import { parseChannelMetadata, resolveProvider } from "./metadata";
+import { listChannels } from "./repo";
+import { fetchChannelModels, updateChannelTestResult } from "./testing";
+import { normalizeChatRequest } from "../../services/provider-transform";
+import { getProviderAdapter } from "../../services/providers";
+import { buildProviderChatRequest } from "../../services/providers/chat-request";
+import { inspectSuccessfulResponse } from "../../services/successful-response";
 
 const RECOVERY_PROBE_PROMPT = "Reply with a short health-check message.";
 const RECOVERY_PROBE_MAX_TOKENS = 32;

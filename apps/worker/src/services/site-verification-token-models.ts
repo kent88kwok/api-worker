@@ -1,4 +1,4 @@
-import type { ChannelTokenTestItem } from "./channel-testing";
+import type { ChannelTokenTestItem } from "../domains/channel/testing";
 
 export type VerifiedTokenModelUpdate = {
 	tokenId: string;
