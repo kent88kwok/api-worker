@@ -31,9 +31,9 @@ run_worker_first = true
 name = "CHECKIN_SCHEDULER"
 class_name = "CheckinScheduler"
 
-[[services]]
-binding = "ATTEMPT_WORKER"
-service = "attempt-worker"
+#[[services]]
+#binding = "ATTEMPT_WORKER"
+#service = "attempt-worker"
 
 [[migrations]]
 tag = "v1"
