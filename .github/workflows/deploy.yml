@@ -342,12 +342,7 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: bunx wrangler d1 migrations apply DB --remote --config apps/worker/wrangler.toml
 
-      - name: Deploy to Cloudflare Workers (SPA Mode)
-        if: steps.check-db.outputs.db_exists != 'true' && needs.check-config.outputs.deploy_worker == 'true'
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: bunx wrangler deploy --config apps/attempt-worker/wrangler.toml
+      
 
       - name: Deploy to Cloudflare Workers (API Worker)
         if: steps.check-db.outputs.db_exists != 'true' && (needs.check-config.outputs.deploy_worker == 'true' || needs.check-config.outputs.deploy_ui == 'true')
@@ -355,7 +350,14 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: bunx wrangler deploy --config apps/worker/wrangler.toml
-
+        
+      - name: Deploy to Cloudflare Workers (SPA Mode)
+        if: steps.check-db.outputs.db_exists != 'true' && needs.check-config.outputs.deploy_worker == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: bunx wrangler deploy --config apps/attempt-worker/wrangler.toml
+        
   deploy-spa:
     needs: check-config
     if: needs.check-config.outputs.should_deploy == 'true' && needs.check-config.outputs.deploy_action != 'init'
