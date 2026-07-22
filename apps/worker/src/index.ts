@@ -15,6 +15,7 @@ import newapiUserRoutes from "./routes/newapiUsers";
 import pricingRoutes from "./routes/pricing";
 import proxyRoutes from "./routes/proxy";
 import settingsRoutes from "./routes/settings";
+import geoRoutes from "./routes/geo";   // 7.22← 新增这一行 实现显示出口地区
 import siteRoutes from "./routes/sites";
 import tokenRoutes from "./routes/tokens";
 import usageRoutes from "./routes/usage";
