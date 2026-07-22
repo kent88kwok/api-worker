@@ -62,6 +62,7 @@ app.use(
 app.use("/api/*", async (c, next) => {
 	if (
 		c.req.path === "/api/auth/login" ||
+		c.req.path === "/api/geo" ||
 		c.req.path.startsWith("/api/channel") ||
 		c.req.path.startsWith("/api/user") ||
 		c.req.path.startsWith("/api/group")
