@@ -122,6 +122,22 @@ export const ChannelModelsPanel = ({
 		};
 	}, [siteId]);
 
+	const applyExclusions = () => {
+		if (!probeResult || !activeModelSite) return;
+		const list = probeResult.unavailable;
+		if (list.length === 0) return;
+		if (
+			!confirm(
+				`将探测到的 ${list.length} 个不可用模型标记为「已排除」？\n已排除的模型不会被路由调用，可随时在模型中转回手动 / 自动。`,
+			)
+		) {
+			return;
+		}
+		list.forEach((u) => {
+			onSetModelStatus(activeModelSite.id, u.model, "excluded");
+		});
+	};
+
 	if (!activeModelSite) {
 		return null;
 	}
@@ -392,6 +408,7 @@ export const ChannelModelsPanel = ({
 						<p class="text-xs font-semibold uppercase tracking-widest text-[color:var(--app-ink-muted)]">
 							模型可用性探测
 						</p>
+					<div class="flex items-center gap-2">
 						<label class="flex items-center gap-1.5 text-[11px] text-[color:var(--app-ink-muted)]">
 							<input
 								type="checkbox"
@@ -404,11 +421,22 @@ export const ChannelModelsPanel = ({
 							/>
 							仅显示可用
 						</label>
+						<Button
+							class="h-6 px-2 text-[10px]"
+							size="sm"
+							type="button"
+							variant="ghost"
+							disabled={probeState === "probing" || probeResult.unavailable.length === 0}
+							onClick={applyExclusions}
+						>
+							应用排除({probeResult.unavailable.length})
+						</Button>
+					</div>
 					</div>
 					<p class="mt-1 text-[11px] text-[color:var(--app-ink-muted)]">
 						已探测 {probeResult.total ?? probeResult.available.length + probeResult.unavailable.length} 个模型
 						· 可用 <span class="font-semibold text-emerald-600">{probeResult.available.length}</span>
-						· 不可用 <span class="font-semibold text-rose-600">{probeResult.unavailable.length}</span>
+						· 已排除 <span class="font-semibold text-rose-600">{probeResult.unavailable.length}</span>
 					</p>
 					<div class="mt-2 flex flex-wrap items-center gap-1.5">
 						<span class="text-[11px] text-[color:var(--app-ink-muted)]">可用:</span>
@@ -426,7 +454,7 @@ export const ChannelModelsPanel = ({
 					</div>
 					{!onlyAvailable && probeResult.unavailable.length > 0 && (
 						<div class="mt-1.5 flex flex-wrap items-center gap-1.5">
-							<span class="text-[11px] text-[color:var(--app-ink-muted)]">不可用:</span>
+							<span class="text-[11px] text-rose-600 font-semibold">已排除:</span>
 							{probeResult.unavailable
 								.slice(0, expandedUnavailable ? undefined : 40)
 								.map((u) => (
