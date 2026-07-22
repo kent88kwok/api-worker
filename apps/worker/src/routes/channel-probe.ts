@@ -167,7 +167,7 @@ async function probeModelWithRetry(
 	return last;
 }
 
-async function runProbe(db: D1, id: string): Promise<ProbeResult | null> {
+async function runProbe(db: D1, id: string, full = false): Promise<ProbeResult | null> {
 	const channel = await getChannelById(db, id);
 	if (!channel) return null;
 	const ch = channel as unknown as {
@@ -190,6 +190,16 @@ async function runProbe(db: D1, id: string): Promise<ProbeResult | null> {
 	const models = rawModels.filter((m) => !OLD_MODEL_PATTERN.test(m));
 	const total = models.length;
 
+	// 读取上一次探测结果：用于「断点续探」，避免免费版 Workers 请求墙钟上限
+	// 导致请求中途被掐断后，已探测的结果随进程一起丢失。
+	const prev = (meta.probed_models ?? null) as ProbeResult | null;
+	const prevSet = new Set<string>([
+		...(prev?.available ?? []),
+		...(prev?.unavailable ?? []).map((u) => u.model),
+	]);
+	// full=true 时清空历史、重新全量探测；否则跳过已探测过的模型，只补探剩余的。
+	const toProbe = full ? models : models.filter((m) => !prevSet.has(m));
+
 	if (!apiKey) {
 		return {
 			probed_at: new Date().toISOString(),
@@ -205,7 +215,7 @@ async function runProbe(db: D1, id: string): Promise<ProbeResult | null> {
 			],
 		};
 	}
-	if (models.length === 0) {
+	if (total === 0) {
 		return {
 			probed_at: new Date().toISOString(),
 			provider,
@@ -214,14 +224,40 @@ async function runProbe(db: D1, id: string): Promise<ProbeResult | null> {
 			unavailable: [],
 		};
 	}
+	if (toProbe.length === 0) {
+		// 本次没有需要新探测的模型，直接返回上一次结果
+		return prev;
+	}
 
 	const base = resolveChannelBaseUrl(channel as never);
-	const available: string[] = [];
-	const unavailable: ProbeUnavailable[] = [];
+	// 从已有结果继续累加，保证断点续探后结果完整
+	const available: string[] = [...(prev?.available ?? [])];
+	const unavailable: ProbeUnavailable[] = [...(prev?.unavailable ?? [])];
 	let cursor = 0;
+
+	// 每探测完一个模型立即落库：即使本次请求被平台墙钟上限掐断，
+	// 已完成的模型结果也已持久化，下次探测会自动续探剩余模型（断点续探）。
+	const persist = async (): Promise<ProbeResult> => {
+		const snapshot: ProbeResult = {
+			probed_at: new Date().toISOString(),
+			provider,
+			total,
+			available: [...available],
+			unavailable: [...unavailable],
+		};
+		const cur = await getChannelById(db, id);
+		const cm = cur as unknown as { metadata_json?: string | null };
+		const m = safeJsonParse<Record<string, unknown>>(cm.metadata_json ?? null, {});
+		m.probed_models = snapshot;
+		await db.prepare("UPDATE channels SET metadata_json = ? WHERE id = ?")
+			.bind(JSON.stringify(m), id)
+			.run();
+		return snapshot;
+	};
+
 	const worker = async () => {
-		while (cursor < models.length) {
-			const model = models[cursor++];
+		while (cursor < toProbe.length) {
+			const model = toProbe[cursor++];
 			const r = await probeModelWithRetry(
 				provider,
 				base,
@@ -231,12 +267,14 @@ async function runProbe(db: D1, id: string): Promise<ProbeResult | null> {
 			);
 			if (r.ok) available.push(model);
 			else unavailable.push({ model, status: r.status, message: r.message });
+			// 增量落库：已完成的部分先保存，避免超时丢结果
+			await persist();
 			// 串行探测时，每个模型之间留间隔以避开免费 Key 的速率限制
-			if (cursor < models.length) await sleep(PROBE_DELAY_MS);
+			if (cursor < toProbe.length) await sleep(PROBE_DELAY_MS);
 		}
 	};
 	await Promise.all(
-		Array.from({ length: Math.min(PROBE_CONCURRENCY, models.length) }, () =>
+		Array.from({ length: Math.min(PROBE_CONCURRENCY, toProbe.length) }, () =>
 			worker(),
 		),
 	);
@@ -252,17 +290,13 @@ async function runProbe(db: D1, id: string): Promise<ProbeResult | null> {
 const app = new Hono<AppEnv>();
 
 // 触发探测并持久化结果
+// full=1 时清空历史、重新全量探测；默认走「断点续探」（跳过已探测模型）
 app.post("/:id", async (c) => {
 	const id = c.req.param("id");
-	const result = await runProbe(c.env.DB, id);
+	const full = c.req.query("full") === "1" || c.req.query("full") === "true";
+	const result = await runProbe(c.env.DB, id, full);
 	if (!result) return c.json({ error: "channel_not_found" }, 404);
-	const current = await getChannelById(c.env.DB, id);
-	const ch = current as unknown as { metadata_json?: string | null };
-	const meta = safeJsonParse<Record<string, unknown>>(ch.metadata_json ?? null, {});
-	meta.probed_models = result;
-	await c.env.DB.prepare("UPDATE channels SET metadata_json = ? WHERE id = ?")
-		.bind(JSON.stringify(meta), id)
-		.run();
+	// 结果已在 runProbe 内逐模型增量落库，这里直接返回最终结果
 	return c.json(result);
 });
 
