@@ -2146,7 +2146,8 @@ export const ChannelsView = ({
 								);
 							})
 						)}
-					</div>
+					</div>；
+					<GeoStatusPanel />
 					<SitesTable
 						editingSite={editingSite}
 						siteGridTemplate={siteGridTemplate}
