@@ -96,6 +96,7 @@ import {
 import type { ChannelModelStatusFilter } from "./model-rows";
 import { getRequestEntryFormatOptions } from "./request-entry-formats";
 import { SitesTable } from "./SitesTable";
+import { GeoStatusPanel } from "./GeoStatusPanel";
 import { VerificationAttemptDetails } from "./VerificationAttemptDetails";
 
 type ChannelsViewProps = {

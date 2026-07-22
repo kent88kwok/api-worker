@@ -29,9 +29,9 @@ export const GeoStatusPanel = () => {
 			.then((res) =>
 				res.ok ? res.json() : Promise.reject(new Error(`HTTP ${res.status}`)),
 			)
-			.then((data: GeoInfo) => {
-				if (active) setGeo(data);
-			})
+		.then((data) => {
+			if (active) setGeo(data as GeoInfo);
+		})
 			.catch((err: unknown) => {
 				if (active) {
 					setError(err instanceof Error ? err.message : String(err));

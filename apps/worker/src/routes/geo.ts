@@ -12,7 +12,14 @@ import { Hono } from "hono";
 const GEMINI_RESTRICTED = new Set(["CN", "RU", "IR", "KP", "SY"]);
 // OpenAI / Anthropic 额外禁：白俄罗斯、缅甸、中非共和国等
 const OPENAI_RESTRICTED = new Set([
-	"CN", "RU", "IR", "KP", "SY", "BY", "MM", "CF",
+	"CN",
+	"RU",
+	"IR",
+	"KP",
+	"SY",
+	"BY",
+	"MM",
+	"CF",
 ]);
 
 const app = new Hono();
