@@ -16,6 +16,7 @@ import pricingRoutes from "./routes/pricing";
 import proxyRoutes from "./routes/proxy";
 import settingsRoutes from "./routes/settings";
 import geoRoutes from "./routes/geo";   // 7.22← 新增这一行 实现显示出口地区
+import probeRoutes from "./routes/channel-probe";   // 7.22← 渠道模型可用性探测
 import siteRoutes from "./routes/sites";
 import tokenRoutes from "./routes/tokens";
 import usageRoutes from "./routes/usage";
@@ -63,6 +64,7 @@ app.use("/api/*", async (c, next) => {
 	if (
 		c.req.path === "/api/auth/login" ||
 		c.req.path === "/api/geo" ||
+		c.req.path.startsWith("/api/probe") ||
 		c.req.path.startsWith("/api/channel") ||
 		c.req.path.startsWith("/api/user") ||
 		c.req.path.startsWith("/api/group")
@@ -87,6 +89,7 @@ app.route("/api/backup", backupRoutes);
 app.route("/api/dashboard", dashboardRoutes);
 app.route("/api/settings", settingsRoutes);
 app.route("/api/geo", geoRoutes);   // ← 新增这一行
+app.route("/api/probe", probeRoutes);   // ← 新增这一行 渠道模型可用性探测
 app.route("/api/channel", newapiChannelRoutes);
 app.route("/api/user", newapiUserRoutes);
 app.route("/api/group", newapiGroupRoutes);

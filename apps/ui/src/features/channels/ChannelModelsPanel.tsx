@@ -6,6 +6,7 @@ import {
 	Pagination,
 	SingleSelect,
 } from "../../components/ui";
+import { useEffect, useState } from "hono/jsx/dom";
 import type {
 	ModelChannel,
 	ModelItem,
@@ -24,6 +25,14 @@ import {
 	type ChannelModelRow,
 	type ChannelModelStatusFilter,
 } from "./model-rows";
+
+type ProbeUnavailable = { model: string; status: number; message: string };
+type ProbeResultData = {
+	probed_at: string;
+	provider: string;
+	available: string[];
+	unavailable: ProbeUnavailable[];
+};
 
 type ChannelModelsPanelProps = {
 	models: ModelItem[];
@@ -76,6 +85,41 @@ export const ChannelModelsPanel = ({
 	onRefreshDraftSite,
 	onSetModelStatus,
 }: ChannelModelsPanelProps) => {
+	const [probeState, setProbeState] = useState<
+		"idle" | "probing" | "done" | "error"
+	>("idle");
+	const [probeResult, setProbeResult] = useState<ProbeResultData | null>(null);
+	const [onlyAvailable, setOnlyAvailable] = useState(false);
+	const siteId = activeModelSite?.id;
+
+	const runProbe = async () => {
+		if (!siteId) return;
+		setProbeState("probing");
+		try {
+			const res = await fetch(`/api/probe/${siteId}`, { method: "POST" });
+			const data = (await res.json()) as ProbeResultData;
+			if (!res.ok) throw new Error("probe_failed");
+			setProbeResult(data);
+			setProbeState("done");
+		} catch {
+			setProbeState("error");
+		}
+	};
+
+	useEffect(() => {
+		if (!siteId) return;
+		let active = true;
+		fetch(`/api/probe/${siteId}`)
+			.then((r) => r.json())
+			.then((d: any) => {
+				if (active && d?.probed_models) setProbeResult(d.probed_models);
+			})
+			.catch(() => {});
+		return () => {
+			active = false;
+		};
+	}, [siteId]);
+
 	if (!activeModelSite) {
 		return null;
 	}
@@ -231,6 +275,15 @@ export const ChannelModelsPanel = ({
 					>
 						{refreshPending ? "拉取中..." : "拉取模型"}
 					</Button>
+					<Button
+						class="h-8 px-3 text-[11px]"
+						size="sm"
+						type="button"
+						disabled={refreshPending || probeState === "probing"}
+						onClick={runProbe}
+					>
+						{probeState === "probing" ? "探测中..." : "探测可用模型"}
+					</Button>
 				</div>
 			</div>
 			<div class="mt-3 grid gap-2 md:grid-cols-[minmax(0,1fr)_132px_auto]">
@@ -330,6 +383,68 @@ export const ChannelModelsPanel = ({
 				<div class="mt-3 rounded-lg border border-dashed border-white/70 bg-white/60 px-3 py-4 text-center text-xs text-[color:var(--app-ink-muted)]">
 					暂无模型
 				</div>
+			)}
+			{probeResult && (
+				<div class="mt-3 rounded-lg border border-white/70 bg-white/60 p-3">
+					<div class="flex flex-wrap items-center justify-between gap-2">
+						<p class="text-xs font-semibold uppercase tracking-widest text-[color:var(--app-ink-muted)]">
+							模型可用性探测
+						</p>
+						<label class="flex items-center gap-1.5 text-[11px] text-[color:var(--app-ink-muted)]">
+							<input
+								type="checkbox"
+								checked={onlyAvailable}
+								onChange={(e) =>
+									setOnlyAvailable(
+										(e.currentTarget as HTMLInputElement).checked,
+									)
+								}
+							/>
+							仅显示可用
+						</label>
+					</div>
+					<div class="mt-2 flex flex-wrap items-center gap-1.5">
+						<span class="text-[11px] text-[color:var(--app-ink-muted)]">可用:</span>
+						{probeResult.available.length === 0 ? (
+							<Chip variant="muted" class="text-[10px]">
+								无
+							</Chip>
+						) : (
+							probeResult.available.map((m) => (
+								<Chip key={m} variant="success" class="text-[10px]">
+									{m}
+								</Chip>
+							))
+						)}
+					</div>
+					<div class="mt-1.5 flex flex-wrap items-center gap-1.5">
+						<span class="text-[11px] text-[color:var(--app-ink-muted)]">不可用:</span>
+						{(onlyAvailable ? [] : probeResult.unavailable).map((u) => (
+							<Chip
+								key={u.model}
+								variant="danger"
+								class="text-[10px]"
+								title={u.message}
+							>
+								{u.model}
+							</Chip>
+						))}
+					</div>
+					<p class="mt-2 text-[10px] text-[color:var(--app-ink-muted)]">
+						探测于 {probeResult.probed_at} · provider={probeResult.provider}
+						（结果已保存，刷新页面可见）
+					</p>
+				</div>
+			)}
+			{probeState === "probing" && (
+				<p class="mt-2 text-[11px] text-[color:var(--app-ink-muted)]">
+					探测中，请稍候…
+				</p>
+			)}
+			{probeState === "error" && (
+				<p class="mt-2 text-[11px] text-[color:var(--app-ink-muted)]">
+					探测失败，请重试。
+				</p>
 			)}
 		</Card>
 	);
