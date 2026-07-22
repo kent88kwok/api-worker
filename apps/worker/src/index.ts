@@ -85,6 +85,7 @@ app.route("/api/attempt-events", attemptEventsRoutes);
 app.route("/api/backup", backupRoutes);
 app.route("/api/dashboard", dashboardRoutes);
 app.route("/api/settings", settingsRoutes);
+app.route("/api/geo", geoRoutes);   // ← 新增这一行
 app.route("/api/channel", newapiChannelRoutes);
 app.route("/api/user", newapiUserRoutes);
 app.route("/api/group", newapiGroupRoutes);
