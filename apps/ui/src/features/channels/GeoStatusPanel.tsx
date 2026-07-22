@@ -2,7 +2,8 @@ import { useEffect, useState } from "hono/jsx/dom";
 import { Card, Chip } from "../../components/ui";
 
 type GeoInfo = {
-	country: string | null;
+	visitor_country: string | null; // 访客（浏览器）来源国，仅供参考
+	egress_country: string | null; // Worker 真实出口国，决定 Gemini 是否受限
 	colo: string | null;
 	city: string | null;
 	region: string | null;
@@ -18,7 +19,7 @@ type GeoInfo = {
 
 // 站点管理页顶部的“Worker 出口探测”面板。
 // 自包含：进入页面即调用 GET /api/geo（该端点已对管理员免鉴权），
-// 显示当前 Worker 出口国家/机房，以及对 Gemini / OpenAI / Anthropic 的地区限制情况。
+// 显示当前 Worker 真实出口国家/机房，以及对 Gemini / OpenAI / Anthropic 的地区限制情况。
 export const GeoStatusPanel = () => {
 	const [geo, setGeo] = useState<GeoInfo | null>(null);
 	const [error, setError] = useState<string | null>(null);
@@ -29,9 +30,9 @@ export const GeoStatusPanel = () => {
 			.then((res) =>
 				res.ok ? res.json() : Promise.reject(new Error(`HTTP ${res.status}`)),
 			)
-		.then((data) => {
-			if (active) setGeo(data as GeoInfo);
-		})
+			.then((data) => {
+				if (active) setGeo(data as GeoInfo);
+			})
 			.catch((err: unknown) => {
 				if (active) {
 					setError(err instanceof Error ? err.message : String(err));
@@ -48,11 +49,14 @@ export const GeoStatusPanel = () => {
 				<span class="text-sm font-semibold">Worker 出口探测</span>
 				{geo ? (
 					<>
+						<Chip variant="muted" class="text-xs">
+							访客 {geo.visitor_country || "未知"}
+						</Chip>
 						<Chip
 							variant={geo.gemini_available ? "success" : "danger"}
 							class="text-xs"
 						>
-							出口 {geo.country || "未知"}
+							出口 {geo.egress_country || "未知"}
 							{geo.colo ? ` · ${geo.colo}` : ""}
 						</Chip>
 						<Chip
@@ -86,7 +90,7 @@ export const GeoStatusPanel = () => {
 				<p class="text-xs text-[color:var(--app-ink-muted)]">{geo.note}</p>
 			) : null}
 			<p class="text-[11px] text-[color:var(--app-ink-muted)]">
-				所有站点共用同一 Worker 出口，下方表格各站点的出口地区与此一致。
+				所有站点共用同一 Worker 出口，下方表格各站点的出口地区与此一致。「访客」只是你浏览器的所在国，不影响 Gemini 的地区限制判断；真正决定可否调用的是「出口」国。
 			</p>
 		</Card>
 	);
