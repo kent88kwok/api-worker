@@ -51,8 +51,13 @@ export const geminiProviderAdapter: ProviderAdapter = {
 	discoverModels(baseUrl, apiKey, fetcher) {
 		const headers = ensureJsonContentType(new Headers());
 		headers.set("x-goog-api-key", apiKey);
+		// 旧版模型正则：Google 对新 Key 限制只能使用 3.x 系列，
+		// 旧模型（2.5/2.0/1.5/1.0）调用会返回 404 "no longer available to new users"。
+		// 发现阶段直接过滤，避免它们进入 models_json 后被探测判为不可用。
+		const OLD_MODEL_PATTERN = /(^|\/)(gemini|palm)[-.]?(2\.5|2\.0|1\.5|1\.0)/i;
 		return performModelDiscovery({
-			target: buildModelsEndpoint(baseUrl, "/v1beta/models"),
+			// pageSize 限制响应体大小，缓解 Cloudflare Workers 免费版 10ms CPU 解析压力
+			target: buildModelsEndpoint(baseUrl, "/v1beta/models?pageSize=100"),
 			headers,
 			parseModels(payload) {
 				if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
@@ -66,6 +71,10 @@ export const geminiProviderAdapter: ProviderAdapter = {
 				for (const item of models) {
 					const modelId = pickGeminiModelId(item);
 					if (!modelId || seenModels.has(modelId)) {
+						continue;
+					}
+					// 跳过旧版模型
+					if (OLD_MODEL_PATTERN.test(modelId)) {
 						continue;
 					}
 					seenModels.add(modelId);

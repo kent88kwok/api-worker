@@ -74,6 +74,32 @@ function buildProbeTarget(
 	};
 }
 
+/**
+ * 探测超时（毫秒）。
+ * 免费版 Cloudflare Workers 有 10ms CPU 限制，但网络 IO 不计入 CPU 时间，
+ * 这里延长到 20s 以容忍 Google 免费层新 Key 的慢响应和限流退避。
+ */
+const PROBE_TIMEOUT_MS = 20000;
+
+/** 探测间隔（毫秒）：免费 Key 速率极低（约 2-5 RPM），必须串行 + 间隔避免限流 */
+const PROBE_DELAY_MS = 3000;
+
+/** 探测失败后的重试次数（针对 404/429/0 等可能因限流导致的瞬时失败） */
+const PROBE_MAX_RETRY = 1;
+
+/** 旧版模型正则：Google 对新 Key 限制只能使用 3.x 系列，旧模型直接 404 */
+const OLD_MODEL_PATTERN = /(^|\/)(gemini|palm)[-.]?(2\.5|2\.0|1\.5|1\.0)/i;
+
+/** 简单 sleep 工具 */
+function sleep(ms: number): Promise<void> {
+	return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** 是否为可能因限流导致的瞬时失败（值得重试） */
+function isTransientFailure(status: number): boolean {
+	return status === 404 || status === 429 || status === 0;
+}
+
 async function probeModel(
 	provider: ProviderType,
 	baseUrl: string,
@@ -89,7 +115,7 @@ async function probeModel(
 	);
 	headers.set("content-type", "application/json");
 	const controller = new AbortController();
-	const timer = setTimeout(() => controller.abort(), 12000);
+	const timer = setTimeout(() => controller.abort(), PROBE_TIMEOUT_MS);
 	try {
 		const res = await fetch(url, {
 			method: "POST",
@@ -112,7 +138,34 @@ async function probeModel(
 	}
 }
 
-const PROBE_CONCURRENCY = 24;
+/**
+ * 探测并发数。
+ * 设为 1：免费 Key 速率极低（约 2-5 RPM），24 并发会在数秒内打爆配额，
+ * 导致所有模型（包括可用的 3.x 模型）都返回 404 被标记为不可用。
+ */
+const PROBE_CONCURRENCY = 1;
+
+/**
+ * 带重试的探测：针对可能因限流导致的瞬时失败（404/429/0）重试一次。
+ * 注意：404 在新 Key 上可能是「旧模型不可用」也可能是「限流」，重试可区分——
+ * 真正的旧模型在重试后仍 404（带 "no longer available to new users" 消息），
+ * 限流导致的 404 在退避后可能变为 200。
+ */
+async function probeModelWithRetry(
+	provider: ProviderType,
+	baseUrl: string,
+	apiKey: string,
+	headerOverrides: Record<string, string>,
+	model: string,
+): Promise<{ ok: boolean; status: number; message: string }> {
+	let last = await probeModel(provider, baseUrl, apiKey, headerOverrides, model);
+	for (let attempt = 1; attempt <= PROBE_MAX_RETRY; attempt++) {
+		if (!isTransientFailure(last.status)) return last;
+		await sleep(PROBE_DELAY_MS * 2);
+		last = await probeModel(provider, baseUrl, apiKey, headerOverrides, model);
+	}
+	return last;
+}
 
 async function runProbe(db: D1, id: string): Promise<ProbeResult | null> {
 	const channel = await getChannelById(db, id);
@@ -130,9 +183,11 @@ async function runProbe(db: D1, id: string): Promise<ProbeResult | null> {
 		tokenRows.length > 0
 			? String(tokenRows[0].api_key ?? "")
 			: String(ch.api_key ?? "");
-	const models = extractModelIds({
+	const rawModels = extractModelIds({
 		models_json: ch.models_json ?? null,
 	} as never);
+	// 过滤掉旧版模型（Google 新 Key 限制只能用 3.x 系列，旧模型必 404）
+	const models = rawModels.filter((m) => !OLD_MODEL_PATTERN.test(m));
 	const total = models.length;
 
 	if (!apiKey) {
@@ -167,7 +222,7 @@ async function runProbe(db: D1, id: string): Promise<ProbeResult | null> {
 	const worker = async () => {
 		while (cursor < models.length) {
 			const model = models[cursor++];
-			const r = await probeModel(
+			const r = await probeModelWithRetry(
 				provider,
 				base,
 				apiKey,
@@ -176,6 +231,8 @@ async function runProbe(db: D1, id: string): Promise<ProbeResult | null> {
 			);
 			if (r.ok) available.push(model);
 			else unavailable.push({ model, status: r.status, message: r.message });
+			// 串行探测时，每个模型之间留间隔以避开免费 Key 的速率限制
+			if (cursor < models.length) await sleep(PROBE_DELAY_MS);
 		}
 	};
 	await Promise.all(
