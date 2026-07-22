@@ -30,6 +30,7 @@ type ProbeUnavailable = { model: string; status: number; message: string };
 type ProbeResultData = {
 	probed_at: string;
 	provider: string;
+	total?: number;
 	available: string[];
 	unavailable: ProbeUnavailable[];
 };
@@ -90,6 +91,7 @@ export const ChannelModelsPanel = ({
 	>("idle");
 	const [probeResult, setProbeResult] = useState<ProbeResultData | null>(null);
 	const [onlyAvailable, setOnlyAvailable] = useState(false);
+	const [expandedUnavailable, setExpandedUnavailable] = useState(false);
 	const siteId = activeModelSite?.id;
 
 	const runProbe = async () => {
@@ -403,6 +405,11 @@ export const ChannelModelsPanel = ({
 							仅显示可用
 						</label>
 					</div>
+					<p class="mt-1 text-[11px] text-[color:var(--app-ink-muted)]">
+						已探测 {probeResult.total ?? probeResult.available.length + probeResult.unavailable.length} 个模型
+						· 可用 <span class="font-semibold text-emerald-600">{probeResult.available.length}</span>
+						· 不可用 <span class="font-semibold text-rose-600">{probeResult.unavailable.length}</span>
+					</p>
 					<div class="mt-2 flex flex-wrap items-center gap-1.5">
 						<span class="text-[11px] text-[color:var(--app-ink-muted)]">可用:</span>
 						{probeResult.available.length === 0 ? (
@@ -417,19 +424,32 @@ export const ChannelModelsPanel = ({
 							))
 						)}
 					</div>
-					<div class="mt-1.5 flex flex-wrap items-center gap-1.5">
-						<span class="text-[11px] text-[color:var(--app-ink-muted)]">不可用:</span>
-						{(onlyAvailable ? [] : probeResult.unavailable).map((u) => (
-							<Chip
-								key={u.model}
-								variant="danger"
-								class="text-[10px]"
-								title={u.message}
-							>
-								{u.model}
-							</Chip>
-						))}
-					</div>
+					{!onlyAvailable && probeResult.unavailable.length > 0 && (
+						<div class="mt-1.5 flex flex-wrap items-center gap-1.5">
+							<span class="text-[11px] text-[color:var(--app-ink-muted)]">不可用:</span>
+							{probeResult.unavailable
+								.slice(0, expandedUnavailable ? undefined : 40)
+								.map((u) => (
+									<Chip
+										key={u.model}
+										variant="danger"
+										class="text-[10px]"
+										title={u.message}
+									>
+										{u.model}
+									</Chip>
+								))}
+							{!expandedUnavailable && probeResult.unavailable.length > 40 && (
+								<button
+									type="button"
+									class="text-[10px] text-[color:var(--app-primary)] underline"
+									onClick={() => setExpandedUnavailable(true)}
+								>
+									展开剩余 {probeResult.unavailable.length - 40} 个
+								</button>
+							)}
+						</div>
+					)}
 					<p class="mt-2 text-[10px] text-[color:var(--app-ink-muted)]">
 						探测于 {probeResult.probed_at} · provider={probeResult.provider}
 						（结果已保存，刷新页面可见）
