@@ -651,6 +651,7 @@ export type TabId =
 	| "pricing"
 	| "tokens"
 	| "usage"
+	| "playground"
 	| "settings";
 
 export type TabItem = {

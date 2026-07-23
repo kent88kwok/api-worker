@@ -93,6 +93,7 @@ import { SettingsView } from "../features/settings/SettingsView";
 import { shouldVerifyAfterSiteSubmit } from "../features/models/model-display";
 import { TokensView } from "../features/tokens/TokensView";
 import { UsageView } from "../features/usage/UsageView";
+import { PlaygroundView } from "../features/playground/PlaygroundView";
 import {
 	buildActionKey,
 	buildDashboardParams,
@@ -650,15 +651,18 @@ const App = () => {
 				if (tabId === "tokens") {
 					await Promise.all([loadTokens(), loadSites()]);
 				}
-				if (tabId === "usage") {
-					await Promise.all([
-						loadSettings(),
-						loadUsage(),
-						loadSites(),
-						loadTokens(),
-						loadModels(),
-					]);
-				}
+			if (tabId === "usage") {
+				await Promise.all([
+					loadSettings(),
+					loadUsage(),
+					loadSites(),
+					loadTokens(),
+					loadModels(),
+				]);
+			}
+			if (tabId === "playground") {
+				await Promise.all([loadSites(), loadModels(), loadCanonicalModels()]);
+			}
 				if (tabId === "settings") {
 					await Promise.all([
 						loadSettings(),
@@ -3865,6 +3869,16 @@ const App = () => {
 					onFiltersChange={handleUsageFiltersChange}
 					onSearch={handleUsageSearch}
 					onClear={handleUsageClear}
+				/>
+			);
+		}
+		if (activeTab === "playground") {
+			return (
+				<PlaygroundView
+					sites={data.sites}
+					token={token}
+					models={data.models}
+					canonicalModels={canonicalModels}
 				/>
 			);
 		}
