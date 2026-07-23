@@ -2298,14 +2298,80 @@ export const ChannelsView = ({
 										/>
 									</div>
 								</div>
-								<div class="mt-4 grid gap-4 md:grid-cols-2">
-									<div>
-										<label
-											class="mb-1.5 block text-xs uppercase tracking-widest text-[color:var(--app-ink-muted)]"
-											for="site-weight"
-										>
-											权重
-										</label>
+						<div class="mt-4 grid gap-4 md:grid-cols-2">
+							<div>
+								<label
+									class="mb-1.5 block text-xs uppercase tracking-widest text-[color:var(--app-ink-muted)]"
+									for="probe-concurrency"
+								>
+									探测并发数
+								</label>
+								<Input
+									id="probe-concurrency"
+									name="probe_concurrency"
+									type="number"
+									min="1"
+									max="16"
+									value={siteForm.probe_concurrency}
+									onInput={(event) =>
+										onFormChange({
+											probe_concurrency: Math.max(
+												1,
+												Math.min(
+													16,
+													Number(
+														(event.currentTarget as HTMLInputElement).value ||
+															1,
+													),
+												),
+											),
+										})
+									}
+								/>
+							</div>
+							<div>
+								<label
+									class="mb-1.5 block text-xs uppercase tracking-widest text-[color:var(--app-ink-muted)]"
+									for="probe-delay"
+								>
+									探测间隔(ms)
+								</label>
+								<Input
+									id="probe-delay"
+									name="probe_delay_ms"
+									type="number"
+									min="0"
+									max="10000"
+									value={siteForm.probe_delay_ms}
+									onInput={(event) =>
+										onFormChange({
+											probe_delay_ms: Math.max(
+												0,
+												Math.min(
+													10000,
+													Number(
+														(event.currentTarget as HTMLInputElement).value ||
+															0,
+													),
+												),
+											),
+										})
+									}
+								/>
+							</div>
+						</div>
+						<p class="mt-2 text-xs text-[color:var(--app-ink-muted)]">
+							免费 Key（如 Google 新 Key）速率极低，建议保持 1 / 3000；付费 Key
+							或其他供应商可调高并发、调低间隔以加速探测。运行时若命中限流(429)会自动降速。
+						</p>
+						<div class="mt-4 grid gap-4 md:grid-cols-2">
+							<div>
+								<label
+									class="mb-1.5 block text-xs uppercase tracking-widest text-[color:var(--app-ink-muted)]"
+									for="site-weight"
+								>
+									权重
+								</label>
 										<Input
 											id="site-weight"
 											name="weight"

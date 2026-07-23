@@ -50,6 +50,8 @@ export const initialSiteForm: SiteForm = {
 			priority: 0,
 		},
 	],
+	probe_concurrency: 1,
+	probe_delay_ms: 3000,
 };
 
 export const initialSettingsForm: SettingsForm = {

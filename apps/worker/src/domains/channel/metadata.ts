@@ -17,6 +17,10 @@ export type ChannelMetadata = {
 	model_mapping: Record<string, string>;
 	header_overrides: Record<string, string>;
 	query_overrides: Record<string, string>;
+	/** 探测并发数（按渠道配置，默认 1） */
+	probe_concurrency: number;
+	/** 探测间隔（毫秒，按渠道配置，默认 3000） */
+	probe_delay_ms: number;
 };
 
 function normalizeMapping(value: unknown): Record<string, string> {
@@ -62,6 +66,8 @@ export function parseChannelMetadata(
 		endpoint_overrides: site.endpoint_overrides,
 		request_entry: site.request_entry,
 		model_mapping: normalizeMapping(base.model_mapping),
+		probe_concurrency: site.probe_concurrency,
+		probe_delay_ms: site.probe_delay_ms,
 		header_overrides: normalizeMapping(
 			base.header_override ?? base.header_overrides ?? base.headers,
 		),

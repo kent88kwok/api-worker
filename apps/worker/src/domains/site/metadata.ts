@@ -27,9 +27,30 @@ export type SiteMetadata = {
 	request_entry: RequestEntry;
 	manual_include_models: string[];
 	manual_exclude_models: string[];
+	/** 探测并发数：免费 Key（如 Google 新 Key）速率极低，必须串行；付费 Key/其他供应商可上调 */
+	probe_concurrency: number;
+	/** 探测间隔（毫秒）：免费 Key 需留间隔避开速率限制；付费 Key 可降到 0 */
+	probe_delay_ms: number;
 };
 
 const DEFAULT_SITE_TYPE: SiteType = "new-api";
+
+/** 探测并发默认值：1（串行），用于免费 Key 等速率受限场景 */
+export const DEFAULT_PROBE_CONCURRENCY = 1;
+/** 探测间隔默认值：3000ms，免费 Key 的安全退避值 */
+export const DEFAULT_PROBE_DELAY_MS = 3000;
+
+/** 把任意值夹成 [min,max] 区间内的整数，非法输入回退到 fallback */
+export function clampInt(
+	value: unknown,
+	min: number,
+	max: number,
+	fallback: number,
+): number {
+	const n = typeof value === "number" ? value : Number(value);
+	if (!Number.isFinite(n)) return fallback;
+	return Math.min(max, Math.max(min, Math.floor(n)));
+}
 
 const normalizeOverride = (value: unknown): string | null => {
 	if (typeof value !== "string") {
@@ -112,6 +133,18 @@ export function parseSiteMetadata(
 		request_entry: parseRequestEntry(parsed.request_entry),
 		manual_include_models: normalizeModelList(parsed.manual_include_models),
 		manual_exclude_models: normalizeModelList(parsed.manual_exclude_models),
+		probe_concurrency: clampInt(
+			parsed.probe_concurrency,
+			1,
+			16,
+			DEFAULT_PROBE_CONCURRENCY,
+		),
+		probe_delay_ms: clampInt(
+			parsed.probe_delay_ms,
+			0,
+			10000,
+			DEFAULT_PROBE_DELAY_MS,
+		),
 	};
 }
 
@@ -123,6 +156,8 @@ export function buildSiteMetadata(
 		request_entry?: Partial<RequestEntry> | null;
 		manual_include_models?: unknown;
 		manual_exclude_models?: unknown;
+		probe_concurrency?: unknown;
+		probe_delay_ms?: unknown;
 	},
 ): string | null {
 	const base = safeJsonParse<Record<string, unknown>>(existing, {});
@@ -162,6 +197,19 @@ export function buildSiteMetadata(
 		} else {
 			delete base.manual_exclude_models;
 		}
+	}
+	if (updates.probe_concurrency !== undefined) {
+		const value = clampInt(
+			updates.probe_concurrency,
+			1,
+			16,
+			DEFAULT_PROBE_CONCURRENCY,
+		);
+		base.probe_concurrency = value;
+	}
+	if (updates.probe_delay_ms !== undefined) {
+		const value = clampInt(updates.probe_delay_ms, 0, 10000, DEFAULT_PROBE_DELAY_MS);
+		base.probe_delay_ms = value;
 	}
 	return Object.keys(base).length > 0 ? JSON.stringify(base) : null;
 }

@@ -77,6 +77,8 @@ type SitePayload = {
 	request_entry_format?: string | null;
 	manual_include_models?: unknown;
 	manual_exclude_models?: unknown;
+	probe_concurrency?: unknown;
+	probe_delay_ms?: unknown;
 	checkin_url?: string | null;
 	system_token?: string;
 	system_userid?: string;
@@ -495,6 +497,8 @@ const buildSiteRecord = (
 		request_entry_format: metadata.request_entry.format,
 		manual_include_models: metadata.manual_include_models,
 		manual_exclude_models: metadata.manual_exclude_models,
+		probe_concurrency: metadata.probe_concurrency,
+		probe_delay_ms: metadata.probe_delay_ms,
 		cooling_models: coolingModels,
 		cooling_model_count: coolingModels.length,
 		cooling_max_remaining_seconds: cooldownMaxRemainingSeconds,
@@ -615,6 +619,8 @@ sites.post("/", async (c) => {
 		},
 		manual_include_models: body.manual_include_models,
 		manual_exclude_models: body.manual_exclude_models,
+		probe_concurrency: body.probe_concurrency,
+		probe_delay_ms: body.probe_delay_ms,
 	});
 	await insertChannel(c.env.DB, {
 		id,
@@ -685,7 +691,9 @@ sites.patch("/:id", async (c) => {
 		body.request_entry_path !== undefined ||
 		body.request_entry_format !== undefined ||
 		body.manual_include_models !== undefined ||
-		body.manual_exclude_models !== undefined;
+		body.manual_exclude_models !== undefined ||
+		body.probe_concurrency !== undefined ||
+		body.probe_delay_ms !== undefined;
 	const metadataJson = shouldUpdateMetadata
 		? buildSiteMetadata(current.metadata_json, {
 				site_type:
@@ -708,6 +716,8 @@ sites.patch("/:id", async (c) => {
 						: undefined,
 				manual_include_models: body.manual_include_models,
 				manual_exclude_models: body.manual_exclude_models,
+				probe_concurrency: body.probe_concurrency,
+				probe_delay_ms: body.probe_delay_ms,
 			})
 		: (current.metadata_json ?? null);
 	const nextSystemToken =

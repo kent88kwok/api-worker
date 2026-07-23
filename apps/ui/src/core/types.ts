@@ -34,6 +34,8 @@ export type Site = {
 	checkin_url?: string | null;
 	manual_include_models?: string[];
 	manual_exclude_models?: string[];
+	probe_concurrency?: number;
+	probe_delay_ms?: number;
 	call_tokens: SiteCallToken[];
 	last_checkin_date?: string | null;
 	last_checkin_status?: string | null;
@@ -669,6 +671,8 @@ export type SiteForm = {
 	system_userid: string;
 	checkin_enabled: boolean;
 	call_tokens: SiteCallTokenForm[];
+	probe_concurrency: number;
+	probe_delay_ms: number;
 };
 
 export type SiteCallTokenForm = {
