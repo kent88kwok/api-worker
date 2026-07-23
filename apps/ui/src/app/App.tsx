@@ -1085,6 +1085,8 @@ const App = () => {
 				system_userid: site.system_userid ?? "",
 				checkin_enabled: Boolean(site.checkin_enabled ?? false),
 				call_tokens: tokenForms,
+				probe_concurrency: site.probe_concurrency ?? 1,
+				probe_delay_ms: site.probe_delay_ms ?? 3000,
 			});
 			setSiteModalOpen(true);
 			dismissNotice();
@@ -1442,6 +1444,8 @@ const App = () => {
 					checkin_url: siteForm.checkin_url.trim() || null,
 					checkin_enabled: siteForm.checkin_enabled,
 					call_tokens: callTokens,
+					probe_concurrency: Number(siteForm.probe_concurrency) || 1,
+					probe_delay_ms: Number(siteForm.probe_delay_ms) || 3000,
 				};
 				let siteId = editingSite?.id ?? null;
 				let actionLabel = "创建";

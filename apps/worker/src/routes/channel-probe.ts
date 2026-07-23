@@ -6,6 +6,7 @@ import { extractModelIds } from "../domains/channel/models";
 import { parseChannelMetadata, resolveProvider } from "../domains/channel/metadata";
 import { resolveChannelBaseUrl } from "../domains/proxy/request/planning";
 import { getProviderAdapter } from "../services/providers";
+import { clampInt } from "../domains/site/metadata";
 import { safeJsonParse } from "../utils/json";
 
 // 渠道模型可用性探测端点（POST/GET /api/probe/:id）
@@ -139,9 +140,11 @@ async function probeModel(
 }
 
 /**
- * 探测并发数。
+ * 探测并发数默认值（回退值）。
  * 设为 1：免费 Key 速率极低（约 2-5 RPM），24 并发会在数秒内打爆配额，
  * 导致所有模型（包括可用的 3.x 模型）都返回 404 被标记为不可用。
+ * 现在该值仅作为「渠道未单独配置时的安全默认」，付费 Key/其他供应商可在
+ * 站点设置里上调并发；运行时命中限流还会自适应再降一档。
  */
 const PROBE_CONCURRENCY = 1;
 
@@ -233,7 +236,28 @@ async function runProbe(db: D1, id: string, full = false): Promise<ProbeResult |
 	// 从已有结果继续累加，保证断点续探后结果完整
 	const available: string[] = [...(prev?.available ?? [])];
 	const unavailable: ProbeUnavailable[] = [...(prev?.unavailable ?? [])];
+
+	// 读取本渠道的探测并发/间隔配置；未配置或非法时回退到安全默认值。
+	// —— 这正是「每渠道可配置」的核心：免费 Gemini Key 维持 1/3000 的安全值，
+	//    付费 Key 或其他供应商可在站点设置里上调并发、下调间隔以加速探测，
+	//    不再被一刀切地锁死在串行 1。
+	const configuredConcurrency = clampInt(
+		meta.probe_concurrency,
+		1,
+		16,
+		PROBE_CONCURRENCY,
+	);
+	const configuredDelay = clampInt(meta.probe_delay_ms, 0, 10000, PROBE_DELAY_MS);
+
+	// 运行时自适应退避：命中速率限制(429/0)时降低并发并加大间隔，
+	// 避免把本就受限的配额打爆（这正是免费版“全模型标红”的根因）。
+	const throttle = {
+		concurrency: configuredConcurrency,
+		delay: configuredDelay,
+	};
+
 	let cursor = 0;
+	let inFlight = 0;
 
 	// 每探测完一个模型立即落库：即使本次请求被平台墙钟上限掐断，
 	// 已完成的模型结果也已持久化，下次探测会自动续探剩余模型（断点续探）。
@@ -257,7 +281,20 @@ async function runProbe(db: D1, id: string, full = false): Promise<ProbeResult |
 
 	const worker = async () => {
 		while (cursor < toProbe.length) {
-			const model = toProbe[cursor++];
+			// 并发闸门：在飞请求数达到当前并发上限时退避等待。
+			// 即便运行时被自适应逻辑下调了并发，其余 worker 也只会在闸门处
+			// 空转等待、不会发出请求，因此一定能收敛、不会死锁。
+			if (inFlight >= throttle.concurrency) {
+				await sleep(20);
+				continue;
+			}
+			inFlight++;
+			const idx = cursor++;
+			if (idx >= toProbe.length) {
+				inFlight--;
+				break;
+			}
+			const model = toProbe[idx];
 			const r = await probeModelWithRetry(
 				provider,
 				base,
@@ -265,18 +302,25 @@ async function runProbe(db: D1, id: string, full = false): Promise<ProbeResult |
 				meta.header_overrides,
 				model,
 			);
+			inFlight--;
 			if (r.ok) available.push(model);
-			else unavailable.push({ model, status: r.status, message: r.message });
+			else {
+				unavailable.push({ model, status: r.status, message: r.message });
+				// 命中限流 → 自适应降并发（最低 1）、加间隔（至少回到安全值），
+				// 其余 worker 会在闸门处自然退避，避免把速率配额打爆。
+				if (r.status === 429 || r.status === 0) {
+					throttle.concurrency = Math.max(1, Math.floor(throttle.concurrency / 2));
+					throttle.delay = Math.max(throttle.delay, PROBE_DELAY_MS);
+				}
+			}
 			// 增量落库：已完成的部分先保存，避免超时丢结果
 			await persist();
-			// 串行探测时，每个模型之间留间隔以避开免费 Key 的速率限制
-			if (cursor < toProbe.length) await sleep(PROBE_DELAY_MS);
+			// 模型之间留间隔以避开速率限制；命中限流后间隔自动变大
+			if (cursor < toProbe.length) await sleep(throttle.delay);
 		}
 	};
 	await Promise.all(
-		Array.from({ length: Math.min(PROBE_CONCURRENCY, toProbe.length) }, () =>
-			worker(),
-		),
+		Array.from({ length: Math.max(1, configuredConcurrency) }, () => worker()),
 	);
 	return {
 		probed_at: new Date().toISOString(),
