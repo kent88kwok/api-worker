@@ -18,6 +18,7 @@ export const tabs: TabItem[] = [
 	{ id: "pricing", label: "价格中心" },
 	{ id: "tokens", label: "令牌管理" },
 	{ id: "usage", label: "使用日志" },
+	{ id: "playground", label: "游乐场" },
 	{ id: "settings", label: "系统设置" },
 ];
 

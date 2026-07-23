@@ -15,6 +15,7 @@ export const tabToPath: Record<TabId, string> = {
 	pricing: "/pricing",
 	tokens: "/tokens",
 	usage: "/usage",
+	playground: "/playground",
 	settings: "/settings",
 };
 
@@ -26,5 +27,6 @@ export const pathToTab: Record<string, TabId> = {
 	"/pricing": "pricing",
 	"/tokens": "tokens",
 	"/usage": "usage",
+	"/playground": "playground",
 	"/settings": "settings",
 };
